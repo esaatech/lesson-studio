@@ -43,7 +43,13 @@ def sqlalchemy_url(settings: Settings | None = None) -> str:
         return ""
     user = quote_plus(current.db_user)
     password = quote_plus(current.db_password.get_secret_value())
-    url = f"postgresql+psycopg://{user}:{password}@{current.db_host}:{current.db_port}/{current.db_name}"
+    host = current.db_host.strip()
+    if host.startswith("/"):
+        url = f"postgresql+psycopg://{user}:{password}@/{current.db_name}?host={quote_plus(host)}"
+        if current.db_sslmode.strip():
+            url += f"&sslmode={quote_plus(current.db_sslmode.strip())}"
+        return url
+    url = f"postgresql+psycopg://{user}:{password}@{host}:{current.db_port}/{current.db_name}"
     if current.db_sslmode.strip():
         url += f"?sslmode={quote_plus(current.db_sslmode.strip())}"
     return url
