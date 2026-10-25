@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     db_password: SecretStr = SecretStr("")
     db_sslmode: str = ""
     firebase_project_id: str = ""
+    cloud_tasks_queue: str = ""
+    cloud_tasks_project: str = ""
+    cloud_tasks_location: str = "us-central1"
+    cloud_tasks_target_url: str = ""
+    cloud_tasks_service_account: str = ""
+    cloud_tasks_oidc_audience: str = ""
+    cloud_tasks_max_attempts: int = 3
+    cloud_tasks_dispatch_deadline_seconds: int = 1200
 
     @field_validator("ai_provider")
     @classmethod

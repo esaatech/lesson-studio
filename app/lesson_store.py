@@ -1,7 +1,7 @@
 """Save and list studiolesson rows for one owner id."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -40,19 +40,25 @@ class LessonRecord(BaseModel):
 
 
 class LessonStore(Protocol):
-    def create(self, owner_id: str, topic: str, beats: list[dict[str, Any]]) -> LessonRecord: ...
+    def create(self, owner_id: str, topic: str, beats: list[dict[str, Any]], status: str = "draft") -> LessonRecord: ...
 
     def list_for_owner(self, owner_id: str) -> list[LessonRecord]: ...
 
     def get_for_owner(self, owner_id: str, lesson_id: uuid.UUID) -> LessonRecord | None: ...
+
+    def get(self, lesson_id: uuid.UUID) -> LessonRecord | None: ...
+
+    def save_script(self, lesson_id: uuid.UUID, beats: list[dict[str, Any]]) -> LessonRecord | None: ...
+
+    def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None: ...
 
 
 class SqlLessonStore:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create(self, owner_id: str, topic: str, beats: list[dict[str, Any]]) -> LessonRecord:
-        row = StudioLesson(owner_id=owner_id, topic=topic, status="draft", beats=beats)
+    def create(self, owner_id: str, topic: str, beats: list[dict[str, Any]], status: str = "draft") -> LessonRecord:
+        row = StudioLesson(owner_id=owner_id, topic=topic, status=status, beats=beats)
         self._session.add(row)
         self._session.flush()
         return LessonRecord.model_validate(row)
@@ -69,4 +75,29 @@ class SqlLessonStore:
         )
         if row is None:
             return None
+        return LessonRecord.model_validate(row)
+
+    def get(self, lesson_id: uuid.UUID) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        return LessonRecord.model_validate(row)
+
+    def save_script(self, lesson_id: uuid.UUID, beats: list[dict[str, Any]]) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        row.beats = beats
+        row.status = "draft"
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return LessonRecord.model_validate(row)
+
+    def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        row.status = status
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
         return LessonRecord.model_validate(row)

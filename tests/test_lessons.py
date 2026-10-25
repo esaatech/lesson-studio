@@ -14,13 +14,13 @@ class MemoryLessonStore:
     def __init__(self) -> None:
         self.rows: list[LessonRecord] = []
 
-    def create(self, owner_id: str, topic: str, beats: list[dict]) -> LessonRecord:
+    def create(self, owner_id: str, topic: str, beats: list[dict], status: str = "draft") -> LessonRecord:
         now = datetime.now(timezone.utc)
         record = LessonRecord(
             id=uuid.uuid4(),
             owner_id=owner_id,
             topic=topic,
-            status="draft",
+            status=status,
             beats=beats,
             audio_dir="",
             html_file="",
@@ -30,6 +30,26 @@ class MemoryLessonStore:
         )
         self.rows.append(record)
         return record
+
+    def get(self, lesson_id: uuid.UUID) -> LessonRecord | None:
+        for row in self.rows:
+            if row.id == lesson_id:
+                return row
+        return None
+
+    def save_script(self, lesson_id: uuid.UUID, beats: list[dict]) -> LessonRecord | None:
+        return self._replace(lesson_id, beats=beats, status="draft")
+
+    def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None:
+        return self._replace(lesson_id, status=status)
+
+    def _replace(self, lesson_id: uuid.UUID, **changes) -> LessonRecord | None:
+        current = self.get(lesson_id)
+        if current is None:
+            return None
+        updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
+        self.rows = [updated if row.id == lesson_id else row for row in self.rows]
+        return updated
 
     def list_for_owner(self, owner_id: str) -> list[LessonRecord]:
         return [row for row in reversed(self.rows) if row.owner_id == owner_id]
@@ -52,7 +72,14 @@ def test_lesson_is_saved_for_the_token_owner():
     app.dependency_overrides[get_lesson_store] = lambda: store
     client = TestClient(app)
     try:
-        created = client.post("/v1/lessons", json={"topic": "Place value", "owner_id": "someone-else"})
+        created = client.post(
+            "/v1/lessons",
+            json={
+                "topic": "Place value",
+                "owner_id": "someone-else",
+                "beats": [{"id": "s05-a", "text": "Here is five.", "visual": "The digit 5."}],
+            },
+        )
         listed = client.get("/v1/lessons")
         assert created.status_code == 201
         assert created.json()["owner_id"] == "teacher-a"
