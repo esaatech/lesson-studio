@@ -40,6 +40,24 @@ class MemoryLessonStore:
     def save_script(self, lesson_id: uuid.UUID, beats: list[dict]) -> LessonRecord | None:
         return self._replace(lesson_id, beats=beats, status="draft")
 
+    def update_beat(
+        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
+    ) -> LessonRecord | None:
+        current = self.get(lesson_id)
+        if current is None:
+            return None
+        beats = []
+        found = False
+        for beat in current.beats:
+            if str(beat.get("id")) != beat_id:
+                beats.append(beat)
+                continue
+            found = True
+            beats.append({**beat, "text": text, "visual": visual, "checkpoint": checkpoint})
+        if not found:
+            return None
+        return self._replace(lesson_id, beats=beats)
+
     def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None:
         return self._replace(lesson_id, status=status)
 
@@ -86,6 +104,33 @@ def test_lesson_is_saved_for_the_token_owner():
         assert created.json()["topic"] == "Place value"
         assert created.json()["status"] == "draft"
         assert [lesson["id"] for lesson in listed.json()] == [created.json()["id"]]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_owner_can_edit_one_line():
+    store = MemoryLessonStore()
+    app.dependency_overrides[require_owner] = lambda: "teacher-a"
+    app.dependency_overrides[get_lesson_store] = lambda: store
+    client = TestClient(app)
+    try:
+        created = client.post(
+            "/v1/lessons",
+            json={
+                "topic": "CSS",
+                "beats": [{"id": "line-1", "text": "Plain text.", "visual": "A white page.", "checkpoint": False}],
+            },
+        )
+        lesson_id = created.json()["id"]
+        saved = client.patch(
+            f"/v1/lessons/{lesson_id}/beats/line-1",
+            json={"text": "Styled text.", "visual": "A blue heading.", "checkpoint": True},
+        )
+        assert saved.status_code == 200
+        beat = saved.json()["beats"][0]
+        assert beat["text"] == "Styled text."
+        assert beat["visual"] == "A blue heading."
+        assert beat["checkpoint"] is True
     finally:
         app.dependency_overrides.clear()
 

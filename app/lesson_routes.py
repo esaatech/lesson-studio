@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.auth import owner_id_from_authorization
@@ -89,6 +89,37 @@ def list_lessons(
     store: LessonStore = Depends(get_lesson_store),
 ) -> list[LessonRecord]:
     return store.list_for_owner(owner_id)
+
+
+class BeatUpdate(BaseModel):
+    text: str
+    visual: str = ""
+    checkpoint: bool = False
+
+    @field_validator("text")
+    @classmethod
+    def spoken_line_is_present(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Spoken line is required")
+        return cleaned
+
+
+@router.patch("/v1/lessons/{lesson_id}/beats/{beat_id}", response_model=LessonRecord)
+def update_beat(
+    lesson_id: uuid.UUID,
+    beat_id: str,
+    body: BeatUpdate,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> LessonRecord | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    if lesson is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    saved = store.update_beat(lesson_id, beat_id, body.text, body.visual.strip(), body.checkpoint)
+    if saved is None:
+        return JSONResponse(status_code=404, content={"error": "Line not found"})
+    return saved
 
 
 @router.get("/v1/lessons/{lesson_id}", response_model=LessonRecord)
