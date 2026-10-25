@@ -14,6 +14,7 @@ from app.elevenlabs import ElevenLabsError
 from app.runtime_settings import get_store
 from app.schemas import LessonAudioRequest
 from app.service import render_lesson_audio
+from app.db import DatabaseError, create_tables
 from app.export.render import ExportError, export_lesson
 from app.lesson.build import build_lesson
 from app.visuals.generate import generate_visual, preview_visual
@@ -41,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     export = subcommands.add_parser("export", help="Record the lesson page to an MP4")
     export.add_argument("lesson", help="Lesson folder that contains index.html")
     export.add_argument("--fps", type=int, default=30)
+    subcommands.add_parser("migrate", help="Create the studiolesson table")
 
     args = parser.parse_args(argv)
     if args.command == "audio":
@@ -54,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(render_lesson(Path(args.request)))
     if args.command == "export":
         return asyncio.run(render_export(Path(args.lesson), args.fps))
+    if args.command == "migrate":
+        return migrate_database()
 
     parser.print_help()
     return 1
@@ -156,6 +160,16 @@ async def render_export(directory: Path, fps: int) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     print(json.dumps(result, indent=2))
+    return 0
+
+
+def migrate_database() -> int:
+    try:
+        create_tables()
+    except DatabaseError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    print("studiolesson")
     return 0
 
 
