@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     db_password: SecretStr = SecretStr("")
     db_sslmode: str = ""
     firebase_project_id: str = ""
+    cors_origins: str = (
+        "http://localhost:8080,http://127.0.0.1:8080,"
+        "https://sbtyacademy.com,https://www.sbtyacademy.com"
+    )
     cloud_tasks_queue: str = ""
     cloud_tasks_project: str = ""
     cloud_tasks_location: str = "us-central1"
