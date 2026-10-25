@@ -1,0 +1,9 @@
+{
+  "voice_id": "CwhRBWXzGAHq8TQ4Fs17",
+  "model_id": "eleven_multilingual_v2",
+  "beats": [
+    {"id": "s05-a", "text": "Here is the digit five, sitting in the ones place."},
+    {"id": "s05-c", "text": "Move it one place right, into the tenths, and it's worth five tenths, or zero point five."},
+    {"id": "s05-checkpoint", "text": "Does that make sense so far?", "checkpoint": true}
+  ]
+}
