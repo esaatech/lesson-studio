@@ -13,7 +13,7 @@ _PAGE = """<!DOCTYPE html>
     body {{ margin: 0; overflow: hidden; font-family: Georgia, serif; background: #f6f3ec; color: #1d2430; }}
     main {{ max-width: 880px; width: 100%; height: 100%; margin: 0 auto; padding: 20px 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }}
     h1 {{ flex: none; font-size: 18px; font-weight: 600; margin: 0 0 8px; }}
-    .stage {{ flex: none; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; box-sizing: border-box; background: white; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(29, 36, 48, 0.06); }}
+    .stage {{ flex: none; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; background: white; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(29, 36, 48, 0.06); }}
     .columns {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; position: relative; min-height: 140px; }}
     .column {{ border-bottom: 2px solid #d9d2c5; text-align: center; padding-top: 72px; color: #8a8175; font-size: 13px; }}
     .digit {{ position: absolute; top: 8px; width: 64px; margin-left: -32px; text-align: center; font-size: 64px; line-height: 1; }}
@@ -229,10 +229,21 @@ _PAGE = """<!DOCTYPE html>
       return lesson.beats[lesson.beats.length - 1];
     }}
 
+    function placeStage() {{
+      stage.style.justifyContent = "flex-start";
+      const first = stage.firstElementChild;
+      const last = stage.lastElementChild;
+      if (!first || !last) return;
+      const used = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+      const available = stage.clientHeight - 56;
+      if (used <= available) stage.style.justifyContent = "center";
+    }}
+
     function paint(time) {{
       const beat = beatAt(time);
       const local = Math.min(Math.max(0, time - beat.start), beat.duration || 0);
       renderers[beat.component](beat.settings, local, beat);
+      placeStage();
       const held = time >= beat.end ? " · pause" : "";
       readout.textContent = time.toFixed(2) + "s / " + lesson.total_duration.toFixed(2) + "s · " + beat.id + held;
       for (const id of Object.keys(beatButtons)) beatButtons[id].classList.toggle("on", id === beat.id);

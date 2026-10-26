@@ -22,11 +22,13 @@ async def export_lesson(directory: Path, fps: int = 30) -> dict:
         raise ExportError("fps must be at least 1.")
     if shutil.which("ffmpeg") is None:
         raise ExportError("ffmpeg is not installed.")
-    if not (directory / "index.html").is_file() and not (directory / "lesson.json").is_file():
+    page = directory / "index.html"
+    if not page.is_file() and not (directory / "lesson.json").is_file():
         raise ExportError(f"Lesson folder has no index.html: {directory}")
 
     record = load_lesson_record(directory)
-    page = write_lesson_page(record["id"], record["beats"], record["total_duration"], directory)
+    if not page.is_file():
+        page = write_lesson_page(record["id"], record["beats"], record["total_duration"], directory)
     times = frame_times(float(record["total_duration"]), fps)
     pad = len(times) / fps
     graph = audio_graph(record["beats"], pad, directory)

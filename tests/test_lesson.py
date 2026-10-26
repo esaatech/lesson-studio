@@ -74,3 +74,4 @@ def test_lesson_page_reveals_a_word_when_it_is_spoken(tmp_path):
     html = path.read_text()
     assert '"reveal_1": 2.57' in html
     assert "function escapeHtml" in html
+    assert "function placeStage" in html
