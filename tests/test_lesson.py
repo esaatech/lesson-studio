@@ -50,3 +50,27 @@ def test_lesson_page_lists_every_beat(tmp_path):
     assert 'get("capture")' in html
     saved = json.loads((tmp_path / "lesson.json").read_text())
     assert saved["total_duration"] == 12.296
+
+
+def test_lesson_page_reveals_a_word_when_it_is_spoken(tmp_path):
+    beat = _beat("b11", 8.602).model_dump()
+    beat["settings"] = {
+        "sentence": "Your turn: build a header.",
+        "emphasis": ["Your turn", "header"],
+    }
+    beat["words"] = [
+        {"word": "Your", "start": 0.0, "end": 0.28},
+        {"word": "turn:", "start": 0.28, "end": 1.22},
+        {"word": "header,", "start": 2.57, "end": 3.01},
+    ]
+    beat["start"] = 0.0
+    beat["end"] = 8.602
+    beat["pause_after"] = 0.0
+
+    path = write_lesson_page("timing", [beat], 8.602, tmp_path)
+    saved = json.loads((tmp_path / "lesson.json").read_text())
+
+    assert saved["beats"][0]["cues"]["reveal_1"] == 2.57
+    html = path.read_text()
+    assert '"reveal_1": 2.57' in html
+    assert "function escapeHtml" in html

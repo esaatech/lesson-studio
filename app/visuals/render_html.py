@@ -75,45 +75,80 @@ _PAGE = """<!DOCTYPE html>
       const badgeOpacity = settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0;
       stage.innerHTML = `
         <div class="columns">
-          ${{columns.map((name) => `<div class="column">${{name}}</div>`).join("")}}
-          <div class="digit" style="left:${{left}}%">${{settings.digit}}</div>
+          ${{columns.map((name) => `<div class="column">${{escapeHtml(name)}}</div>`).join("")}}
+          <div class="digit" style="left:${{left}}%">${{escapeHtml(settings.digit)}}</div>
         </div>
-        <div class="label" style="opacity:${{labelOpacity}}">${{settings.label}}</div>
-        <div class="badge" style="opacity:${{badgeOpacity}}">${{settings.badge}}</div>`;
+        <div class="label" style="opacity:${{labelOpacity}}">${{escapeHtml(settings.label)}}</div>
+        <div class="badge" style="opacity:${{badgeOpacity}}">${{escapeHtml(settings.badge)}}</div>`;
+    }}
+
+    function bare(word) {{
+      return word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "").toLowerCase();
+    }}
+
+    function escapeHtml(value) {{
+      return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }}
+
+    function revealTime(beat, index, count) {{
+      const cues = beat.cues || {{}};
+      const timed = cues["reveal_" + index];
+      if (timed != null) return timed;
+      return count ? (beat.duration || 1) * index / count : 0;
     }}
 
     function renderHighlightWords(settings, t, beat) {{
       const view = beat || plan;
-      const p = clamp(t / (view.duration || 1));
-      const shown = Math.floor(p * settings.emphasis.length + 0.0001);
-      const words = settings.sentence.split(/(\\s+)/);
-      const emphasis = new Set(settings.emphasis.slice(0, shown).map((word) => word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "")));
-      stage.innerHTML = `<div class="sentence">${{words.map((word) => {{
-        const bare = word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "");
-        return emphasis.has(bare) ? `<span class="on">${{word}}</span>` : word;
-      }}).join("")}}</div>`;
+      const tokens = settings.sentence.split(/(\\s+)/);
+      const on = tokens.map(() => false);
+      let cursor = 0;
+      settings.emphasis.forEach((phrase, index) => {{
+        if (t + 0.0001 < revealTime(view, index, settings.emphasis.length)) return;
+        phrase.split(/[\\s/]+/).map(bare).filter(Boolean).forEach((piece) => {{
+          for (let i = cursor; i < tokens.length; i++) {{
+            if (bare(tokens[i]) === piece) {{
+              on[i] = true;
+              cursor = i + 1;
+              break;
+            }}
+          }}
+        }});
+      }});
+      stage.innerHTML = `<div class="sentence">${{tokens.map((word, index) => on[index] ? `<span class="on">${{escapeHtml(word)}}</span>` : escapeHtml(word)).join("")}}</div>`;
     }}
 
     function renderLabelCallout(settings, t, beat) {{
       const view = beat || plan;
-      const p = clamp(t / (view.duration || 1));
-      const shown = Math.floor(p * settings.parts.length + 0.0001);
-      stage.innerHTML = `<h2>${{settings.title}}</h2>` + settings.parts.map((part, index) => `
-        <div class="part" style="opacity:${{index < shown ? 1 : 0}}">
-          <strong>${{part.name}}</strong>
-          <div>${{part.detail}}</div>
+      stage.innerHTML = `<h2>${{escapeHtml(settings.title)}}</h2>` + settings.parts.map((part, index) => `
+        <div class="part" style="opacity:${{t + 0.0001 >= revealTime(view, index, settings.parts.length) ? 1 : 0}}">
+          <strong>${{escapeHtml(part.name)}}</strong>
+          <div>${{escapeHtml(part.detail)}}</div>
         </div>`).join("");
     }}
 
     function renderPathTrace(settings, t, beat) {{
       const view = beat || plan;
-      const p = clamp(t / (view.duration || 1));
+      const count = settings.steps.length;
+      const times = settings.steps.map((_, index) => revealTime(view, index, count));
+      let amount = 0;
+      if (count <= 1) amount = t + 0.0001 >= (times[0] || 0) ? 1 : 0;
+      else if (t <= times[0]) amount = 0;
+      else if (t >= times[count - 1]) amount = 1;
+      else {{
+        for (let index = 0; index < count - 1; index++) {{
+          if (t < times[index + 1]) {{
+            const span = Math.max(0.001, times[index + 1] - times[index]);
+            amount = (index + (t - times[index]) / span) / (count - 1);
+            break;
+          }}
+        }}
+      }}
       stage.innerHTML = `
-        <h2>${{settings.title}}</h2>
-        <div class="path"><div style="width:${{p * 100}}%"></div></div>
+        <h2>${{escapeHtml(settings.title)}}</h2>
+        <div class="path"><div style="width:${{amount * 100}}%"></div></div>
         <div class="steps">${{settings.steps.map((step, index) => {{
-          const opacity = p >= index / (settings.steps.length - 1) ? 1 : 0.25;
-          return `<div class="step" style="opacity:${{opacity}}">${{step}}</div>`;
+          const opacity = t + 0.0001 >= times[index] ? 1 : 0.25;
+          return `<div class="step" style="opacity:${{opacity}}">${{escapeHtml(step)}}</div>`;
         }}).join("")}}</div>`;
     }}
 

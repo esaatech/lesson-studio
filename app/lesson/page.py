@@ -147,36 +147,71 @@ _PAGE = """<!DOCTYPE html>
       const left = ((index + 0.5) / columns.length) * 100;
       stage.innerHTML = `
         <div class="columns">
-          ${{columns.map((name) => `<div class="column">${{name}}</div>`).join("")}}
-          <div class="digit" style="left:${{left}}%">${{settings.digit}}</div>
+          ${{columns.map((name) => `<div class="column">${{escapeHtml(name)}}</div>`).join("")}}
+          <div class="digit" style="left:${{left}}%">${{escapeHtml(settings.digit)}}</div>
         </div>
-        <div class="label" style="opacity:${{span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration)}}">${{settings.label}}</div>
-        <div class="badge" style="opacity:${{settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0}}">${{settings.badge || ""}}</div>`;
+        <div class="label" style="opacity:${{span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration)}}">${{escapeHtml(settings.label)}}</div>
+        <div class="badge" style="opacity:${{settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0}}">${{escapeHtml(settings.badge || "")}}</div>`;
+    }}
+
+    function bare(word) {{
+      return word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "").toLowerCase();
+    }}
+
+    function escapeHtml(value) {{
+      return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }}
+
+    function revealTime(beat, index, count) {{
+      const cues = beat.cues || {{}};
+      const timed = cues["reveal_" + index];
+      if (timed != null) return timed;
+      return count ? (beat.duration || 1) * index / count : 0;
     }}
 
     function renderHighlightWords(settings, t, beat) {{
-      const p = clamp(t / (beat.duration || 1));
-      const shown = Math.floor(p * settings.emphasis.length + 0.0001);
-      const emphasis = new Set(settings.emphasis.slice(0, shown).map((word) => word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "")));
-      const words = settings.sentence.split(/(\\s+)/);
-      stage.innerHTML = `<div class="sentence">${{words.map((word) => {{
-        const bare = word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "");
-        return emphasis.has(bare) ? `<span class="on">${{word}}</span>` : word;
-      }}).join("")}}</div>`;
+      const tokens = settings.sentence.split(/(\\s+)/);
+      const on = tokens.map(() => false);
+      let cursor = 0;
+      settings.emphasis.forEach((phrase, index) => {{
+        if (t + 0.0001 < revealTime(beat, index, settings.emphasis.length)) return;
+        phrase.split(/[\\s/]+/).map(bare).filter(Boolean).forEach((piece) => {{
+          for (let i = cursor; i < tokens.length; i++) {{
+            if (bare(tokens[i]) === piece) {{
+              on[i] = true;
+              cursor = i + 1;
+              break;
+            }}
+          }}
+        }});
+      }});
+      stage.innerHTML = `<div class="sentence">${{tokens.map((word, index) => on[index] ? `<span class="on">${{escapeHtml(word)}}</span>` : escapeHtml(word)).join("")}}</div>`;
     }}
 
     function renderLabelCallout(settings, t, beat) {{
-      const p = clamp(t / (beat.duration || 1));
-      const shown = Math.floor(p * settings.parts.length + 0.0001);
-      stage.innerHTML = `<h2>${{settings.title}}</h2>` + settings.parts.map((part, index) => `
-        <div class="part" style="opacity:${{index < shown ? 1 : 0}}"><strong>${{part.name}}</strong><div>${{part.detail}}</div></div>`).join("");
+      stage.innerHTML = `<h2>${{escapeHtml(settings.title)}}</h2>` + settings.parts.map((part, index) => `
+        <div class="part" style="opacity:${{t + 0.0001 >= revealTime(beat, index, settings.parts.length) ? 1 : 0}}"><strong>${{escapeHtml(part.name)}}</strong><div>${{escapeHtml(part.detail)}}</div></div>`).join("");
     }}
 
     function renderPathTrace(settings, t, beat) {{
-      const p = clamp(t / (beat.duration || 1));
-      stage.innerHTML = `<h2>${{settings.title}}</h2>
-        <div class="path"><div style="width:${{p * 100}}%"></div></div>
-        <div class="steps">${{settings.steps.map((step, index) => `<div style="opacity:${{p >= index / (settings.steps.length - 1) ? 1 : 0.25}}">${{step}}</div>`).join("")}}</div>`;
+      const count = settings.steps.length;
+      const times = settings.steps.map((_, index) => revealTime(beat, index, count));
+      let amount = 0;
+      if (count <= 1) amount = t + 0.0001 >= (times[0] || 0) ? 1 : 0;
+      else if (t <= times[0]) amount = 0;
+      else if (t >= times[count - 1]) amount = 1;
+      else {{
+        for (let index = 0; index < count - 1; index++) {{
+          if (t < times[index + 1]) {{
+            const span = Math.max(0.001, times[index + 1] - times[index]);
+            amount = (index + (t - times[index]) / span) / (count - 1);
+            break;
+          }}
+        }}
+      }}
+      stage.innerHTML = `<h2>${{escapeHtml(settings.title)}}</h2>
+        <div class="path"><div style="width:${{amount * 100}}%"></div></div>
+        <div class="steps">${{settings.steps.map((step, index) => `<div style="opacity:${{t + 0.0001 >= times[index] ? 1 : 0.25}}">${{escapeHtml(step)}}</div>`).join("")}}</div>`;
     }}
 
     const renderers = {{
@@ -289,6 +324,7 @@ _PAGE = """<!DOCTYPE html>
 
 def write_lesson_page(lesson_id: str, beats: list[dict], total_duration: float, directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
+    beats = [_with_spoken_cues(beat) for beat in beats]
     payload = {"id": lesson_id, "total_duration": total_duration, "beats": beats}
     (directory / "lesson.json").write_text(json.dumps(payload, indent=2))
     lesson_json = json.dumps(payload).replace("<", "\\u003c")
@@ -296,6 +332,24 @@ def write_lesson_page(lesson_id: str, beats: list[dict], total_duration: float, 
     path = directory / "index.html"
     path.write_text(html)
     return path
+
+
+def _with_spoken_cues(beat: dict) -> dict:
+    words = beat.get("words") or []
+    component = str(beat.get("component") or "")
+    if not words or not component:
+        return beat
+    from app.visuals.cues import cues_for
+    from app.visuals.schema import WordTime
+
+    updated = dict(beat)
+    updated["cues"] = cues_for(
+        component,
+        beat.get("settings") or {},
+        [WordTime.model_validate(word) for word in words],
+        beat.get("duration"),
+    )
+    return updated
 
 
 def load_lesson_record(directory: Path) -> dict:
