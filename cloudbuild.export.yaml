@@ -1,0 +1,11 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.job
+      - -t
+      - us-central1-docker.pkg.dev/esaasolution/cloud-run-source-deploy/esaatech-lesson-studio/lesson-studio-export:latest
+      - .
+images:
+  - us-central1-docker.pkg.dev/esaasolution/cloud-run-source-deploy/esaatech-lesson-studio/lesson-studio-export:latest

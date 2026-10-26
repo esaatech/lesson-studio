@@ -1,0 +1,8 @@
+.git
+.env
+output
+.venv
+.pytest_cache
+__pycache__
+*.mp3
+.DS_Store

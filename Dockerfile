@@ -1,4 +1,4 @@
-# API image for Cloud Run. The MP4 job is a separate image with Chromium and ffmpeg.
+# API image for Cloud Run. MP4 export runs in Dockerfile.job, which has Chromium and ffmpeg.
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \

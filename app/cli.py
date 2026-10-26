@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import sys
+import uuid
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ from app.schemas import LessonAudioRequest
 from app.service import render_lesson_audio
 from app.db import DatabaseError, create_tables
 from app.export.render import ExportError, export_lesson
+from app.export_service import run_saved_export
 from app.lesson.build import build_lesson
 from app.visuals.generate import generate_visual, preview_visual
 from app.visuals.schema import VisualBeat
@@ -42,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     export = subcommands.add_parser("export", help="Record the lesson page to an MP4")
     export.add_argument("lesson", help="Lesson folder that contains index.html")
     export.add_argument("--fps", type=int, default=30)
+    job = subcommands.add_parser("export-job", help="Record one saved lesson. The Cloud Run Job runs this.")
+    job.add_argument("lesson_id", help="Lesson id that is already marked exporting")
     subcommands.add_parser("migrate", help="Create the studiolesson table")
 
     args = parser.parse_args(argv)
@@ -56,6 +60,14 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(render_lesson(Path(args.request)))
     if args.command == "export":
         return asyncio.run(render_export(Path(args.lesson), args.fps))
+    if args.command == "export-job":
+        _configure_logging()
+        try:
+            lesson_id = uuid.UUID(args.lesson_id)
+        except ValueError:
+            print("Lesson id is not valid.", file=sys.stderr)
+            return 1
+        return run_saved_export(lesson_id)
     if args.command == "migrate":
         return migrate_database()
 

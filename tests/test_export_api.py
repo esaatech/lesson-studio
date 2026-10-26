@@ -53,6 +53,31 @@ def test_export_saves_the_video_for_download(monkeypatch, tmp_path):
         app.dependency_overrides.clear()
 
 
+def test_export_starts_the_cloud_run_job(monkeypatch, tmp_path):
+    client, store = _client()
+    lesson = _rendered(store, tmp_path)
+    monkeypatch.setenv("EXPORT_JOB", "lesson-studio-export")
+    monkeypatch.setenv("EXPORT_JOB_PROJECT", "esaasolution")
+    get_settings.cache_clear()
+    started = {}
+
+    def fake_start(lesson_id):
+        started["id"] = lesson_id
+        return "projects/esaasolution/locations/us-central1/jobs/lesson-studio-export"
+
+    monkeypatch.setattr("app.export_service.start_export_job", fake_start)
+    try:
+        response = client.post(f"/v1/lessons/{lesson.id}/export")
+        assert response.status_code == 200
+        assert response.json()["status"] == "exporting"
+        assert started["id"] == lesson.id
+        assert store.get(lesson.id).status == "exporting"
+        assert not (tmp_path / f"{lesson.id}.mp4").is_file()
+    finally:
+        get_settings.cache_clear()
+        app.dependency_overrides.clear()
+
+
 def test_export_waits_until_the_lesson_page_exists():
     client, store = _client()
     lesson = store.create("teacher-a", "Lesson: Welcome", [BEAT], status="draft")
