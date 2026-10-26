@@ -26,6 +26,12 @@ async def build_lesson(payload: dict, output_dir: Path | None = None) -> dict:
         previous_end_state = visual.end_state
         resolved.append(visual)
     placed, total = place_beats(resolved, pause)
+    spoken = {str(raw.get("id")): raw for raw in payload["beats"]}
+    for beat in placed:
+        raw = spoken.get(str(beat.get("id")), {})
+        beat["text"] = str(raw.get("text") or beat.get("text") or "")
+        if not beat.get("audio_file"):
+            beat["audio_file"] = str(raw.get("audio_file") or "")
     page = write_lesson_page(lesson_id, placed, total, directory)
     return {
         "id": lesson_id,

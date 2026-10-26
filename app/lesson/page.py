@@ -9,10 +9,11 @@ _PAGE = """<!DOCTYPE html>
   <meta charset="utf-8" />
   <title>{title}</title>
   <style>
-    body {{ margin: 0; font-family: Georgia, serif; background: #f6f3ec; color: #1d2430; }}
-    main {{ max-width: 880px; margin: 0 auto; padding: 32px 20px 48px; }}
-    h1 {{ font-size: 18px; font-weight: 600; margin: 0 0 8px; }}
-    .stage {{ min-height: 280px; background: white; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(29, 36, 48, 0.06); }}
+    html, body {{ height: 100%; }}
+    body {{ margin: 0; overflow: hidden; font-family: Georgia, serif; background: #f6f3ec; color: #1d2430; }}
+    main {{ max-width: 880px; width: 100%; height: 100%; margin: 0 auto; padding: 20px 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }}
+    h1 {{ flex: none; font-size: 18px; font-weight: 600; margin: 0 0 8px; }}
+    .stage {{ flex: none; min-height: 240px; background: white; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(29, 36, 48, 0.06); }}
     .columns {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; position: relative; min-height: 140px; }}
     .column {{ border-bottom: 2px solid #d9d2c5; text-align: center; padding-top: 72px; color: #8a8175; font-size: 13px; }}
     .digit {{ position: absolute; top: 8px; width: 64px; margin-left: -32px; text-align: center; font-size: 64px; line-height: 1; }}
@@ -24,12 +25,17 @@ _PAGE = """<!DOCTYPE html>
     .path {{ height: 8px; background: #e6e0d6; border-radius: 999px; margin: 28px 0; }}
     .path > div {{ height: 8px; background: #2f6f4e; border-radius: 999px; }}
     .steps {{ display: flex; justify-content: space-between; gap: 8px; }}
-    .controls {{ display: flex; align-items: center; gap: 12px; margin-top: 20px; font-family: sans-serif; font-size: 14px; }}
-    button {{ font: inherit; padding: 8px 14px; border-radius: 999px; border: 0; background: #1d2430; color: white; }}
+    .controls {{ flex: none; display: flex; align-items: center; gap: 12px; margin-top: 20px; font-family: sans-serif; font-size: 14px; }}
+    button#play {{ font: inherit; padding: 8px 14px; border-radius: 999px; border: 0; background: #1d2430; color: white; }}
     label {{ flex: 1; }}
     input {{ width: 100%; }}
-    body.capture h1, body.capture .controls {{ display: none; }}
-    body.capture main {{ min-height: 100vh; display: flex; align-items: center; padding-top: 0; padding-bottom: 0; box-sizing: border-box; }}
+    .timeline {{ position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; list-style: none; margin: 16px 0 0; padding: 0; font-family: sans-serif; }}
+    .timeline button {{ display: flex; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid #e6e0d6; background: transparent; color: inherit; font: inherit; cursor: pointer; }}
+    .timeline button.on {{ background: #e7f0e4; }}
+    .timeline .when {{ width: 52px; flex: none; color: #8a8175; }}
+    body.capture {{ overflow: visible; height: auto; }}
+    body.capture h1, body.capture .controls, body.capture .timeline {{ display: none; }}
+    body.capture main {{ height: auto; min-height: 100vh; overflow: visible; display: flex; align-items: center; padding-top: 0; padding-bottom: 0; }}
     body.capture .stage {{ width: 100%; }}
   </style>
 </head>
@@ -43,6 +49,7 @@ _PAGE = """<!DOCTYPE html>
         <input id="slider" type="range" min="0" step="0.01" value="0" />
       </label>
     </div>
+    <ol class="timeline" id="timeline"></ol>
   </main>
   <script>
     const lesson = {lesson_json};
@@ -51,19 +58,72 @@ _PAGE = """<!DOCTYPE html>
     const slider = document.getElementById("slider");
     const readout = document.getElementById("readout");
     const play = document.getElementById("play");
-    const audios = {{}};
+    const timeline = document.getElementById("timeline");
+    const beatButtons = {{}};
+    const player = document.createElement("audio");
+    player.preload = "auto";
+    player.loop = false;
+    document.body.append(player);
     let lessonTime = 0;
     let playing = false;
     let scrubbing = false;
-    let active = null;
     let lastTick = null;
+    let playToken = 0;
+    let shownBeat = "";
+
+    function speakAt(time) {{
+      const beat = beatAt(time);
+      const local = Math.max(0, time - beat.start);
+      const clip = beat.duration || 0;
+      if (!beat.audio_file || local >= clip - 0.03) {{
+        if (!player.paused) player.pause();
+        return;
+      }}
+      // play() on an ended clip starts it again from the beginning.
+      if (player.dataset.beat === beat.id && player.ended) return;
+      if (player.dataset.beat !== beat.id) {{
+        const token = ++playToken;
+        let started = false;
+        const start = () => {{
+          if (started || token !== playToken || !playing) return;
+          const at = Math.max(0, lessonTime - beat.start);
+          if (at >= clip - 0.03) return;
+          started = true;
+          try {{ player.currentTime = at; }} catch (err) {{}}
+          const pending = player.play();
+          if (pending && pending.catch) pending.catch(() => {{}});
+        }};
+        player.dataset.beat = beat.id;
+        player.addEventListener("loadedmetadata", start, {{ once: true }});
+        player.src = beat.audio_file;
+        return;
+      }}
+      if (player.paused) {{
+        const pending = player.play();
+        if (pending && pending.catch) pending.catch(() => {{}});
+      }}
+    }}
 
     for (const beat of lesson.beats) {{
-      if (!beat.audio_file) continue;
-      const audio = document.createElement("audio");
-      audio.preload = "auto";
-      audio.src = beat.audio_file;
-      audios[beat.id] = audio;
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = beat.start.toFixed(1) + "s";
+      const line = document.createElement("span");
+      line.textContent = beat.text || beat.id;
+      button.append(when, line);
+      button.addEventListener("click", () => {{
+        lessonTime = beat.start;
+        lastTick = null;
+        player.dataset.beat = "";
+        paint(lessonTime);
+        if (playing) speakAt(lessonTime);
+      }});
+      item.append(button);
+      timeline.append(item);
+      beatButtons[beat.id] = button;
     }}
 
     function clamp(value) {{
@@ -140,14 +200,22 @@ _PAGE = """<!DOCTYPE html>
       renderers[beat.component](beat.settings, local, beat);
       const held = time >= beat.end ? " · pause" : "";
       readout.textContent = time.toFixed(2) + "s / " + lesson.total_duration.toFixed(2) + "s · " + beat.id + held;
+      for (const id of Object.keys(beatButtons)) beatButtons[id].classList.toggle("on", id === beat.id);
+      const row = beatButtons[beat.id] && beatButtons[beat.id].parentElement;
+      if (row && beat.id !== shownBeat) {{
+        shownBeat = beat.id;
+        const top = row.offsetTop;
+        const bottom = top + row.offsetHeight;
+        if (top < timeline.scrollTop || bottom > timeline.scrollTop + timeline.clientHeight) {{
+          timeline.scrollTop = Math.max(0, top);
+        }}
+      }}
       slider.value = String(time);
       document.getElementById("title").textContent = lesson.id + " · " + beat.id;
     }}
 
     function stopAudio() {{
-      if (!active) return;
-      active.pause();
-      active = null;
+      player.pause();
     }}
 
     play.addEventListener("click", () => {{
@@ -156,6 +224,7 @@ _PAGE = """<!DOCTYPE html>
       if (!playing) stopAudio();
       if (playing && lessonTime >= lesson.total_duration - 0.05) lessonTime = 0;
       lastTick = null;
+      if (playing) speakAt(lessonTime);
     }});
 
     slider.max = String(lesson.total_duration);
@@ -163,6 +232,7 @@ _PAGE = """<!DOCTYPE html>
     slider.addEventListener("pointerup", () => {{ scrubbing = false; lastTick = null; }});
     slider.addEventListener("input", () => {{
       lessonTime = Number(slider.value);
+      player.dataset.beat = "";
       paint(lessonTime);
     }});
 
@@ -170,19 +240,20 @@ _PAGE = """<!DOCTYPE html>
       if (playing && !scrubbing) {{
         const beat = beatAt(lessonTime);
         const local = lessonTime - beat.start;
-        const audio = audios[beat.id];
-        const clip = audio && audio.duration ? audio.duration : beat.duration;
-        const inSpeech = audio && local < Math.min(beat.duration, clip) - 0.03 && !audio.ended;
+        const clip = beat.duration || 0;
+        const same = player.dataset.beat === beat.id;
+        const ended = same && player.ended;
+        const inSpeech = Boolean(beat.audio_file) && local < clip - 0.03 && !ended;
         if (inSpeech) {{
-          if (active !== audio) {{
-            stopAudio();
-            active = audio;
-            audio.currentTime = Math.max(0, local);
-            audio.play();
+          speakAt(lessonTime);
+          const heard = beat.start + (player.currentTime || 0);
+          if (same && !player.paused && !player.ended && heard + 0.02 >= lessonTime && heard < beat.end) {{
+            lessonTime = heard;
+          }} else if (lastTick !== null) {{
+            lessonTime += (now - lastTick) / 1000;
           }}
-          lessonTime = beat.start + audio.currentTime;
         }} else {{
-          stopAudio();
+          if (!player.paused) player.pause();
           if (lastTick !== null) lessonTime += (now - lastTick) / 1000;
         }}
         if (lessonTime >= lesson.total_duration) {{

@@ -46,7 +46,8 @@ class Settings(BaseSettings):
     firebase_project_id: str = ""
     cors_origins: str = (
         "http://localhost:8080,http://127.0.0.1:8080,"
-        "https://sbtyacademy.com,https://www.sbtyacademy.com"
+        "https://sbtyacademy.com,https://www.sbtyacademy.com,"
+        "https://sbtyacedemy.com,https://www.sbtyacedemy.com"
     )
     cloud_tasks_queue: str = ""
     cloud_tasks_project: str = ""
