@@ -61,6 +61,11 @@ class MemoryLessonStore:
     def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None:
         return self._replace(lesson_id, status=status)
 
+    def save_render(
+        self, lesson_id: uuid.UUID, beats: list[dict], audio_dir: str, html_file: str
+    ) -> LessonRecord | None:
+        return self._replace(lesson_id, beats=beats, audio_dir=audio_dir, html_file=html_file, status="rendered")
+
     def _replace(self, lesson_id: uuid.UUID, **changes) -> LessonRecord | None:
         current = self.get(lesson_id)
         if current is None:

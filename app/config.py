@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     cloud_tasks_oidc_audience: str = ""
     cloud_tasks_max_attempts: int = 3
     cloud_tasks_dispatch_deadline_seconds: int = 1200
+    cloud_tasks_render_queue: str = ""
+    cloud_tasks_render_target_url: str = ""
 
     @field_validator("ai_provider")
     @classmethod

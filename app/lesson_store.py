@@ -56,6 +56,10 @@ class LessonStore(Protocol):
 
     def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None: ...
 
+    def save_render(
+        self, lesson_id: uuid.UUID, beats: list[dict[str, Any]], audio_dir: str, html_file: str
+    ) -> LessonRecord | None: ...
+
 
 class SqlLessonStore:
     def __init__(self, session: Session) -> None:
@@ -123,6 +127,20 @@ class SqlLessonStore:
         if row is None:
             return None
         row.status = status
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return LessonRecord.model_validate(row)
+
+    def save_render(
+        self, lesson_id: uuid.UUID, beats: list[dict[str, Any]], audio_dir: str, html_file: str
+    ) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        row.beats = beats
+        row.audio_dir = audio_dir
+        row.html_file = html_file
+        row.status = "rendered"
         row.updated_at = datetime.now(timezone.utc)
         self._session.flush()
         return LessonRecord.model_validate(row)

@@ -37,13 +37,52 @@ def enqueue_script(lesson_id: uuid.UUID) -> str:
     if not uses_queue():
         raise CloudTaskError("Cloud Tasks queue is not configured.")
     settings = get_settings()
+    return _enqueue(
+        lesson_id,
+        queue=settings.cloud_tasks_queue.strip(),
+        target=settings.cloud_tasks_target_url.strip(),
+        task_id=f"studio-script-{lesson_id}",
+        failure="Failed to enqueue the script",
+    )
+
+
+def uses_render_queue() -> bool:
+    settings = get_settings()
+    if not settings.cloud_tasks_render_queue.strip():
+        return False
+    missing = []
+    if not settings.cloud_tasks_project.strip():
+        missing.append("CLOUD_TASKS_PROJECT")
+    if not settings.cloud_tasks_render_target_url.strip():
+        missing.append("CLOUD_TASKS_RENDER_TARGET_URL")
+    if not settings.cloud_tasks_service_account.strip():
+        missing.append("CLOUD_TASKS_SERVICE_ACCOUNT")
+    if missing:
+        raise CloudTaskError("Render queue is incomplete. Set " + ", ".join(missing) + ".")
+    return True
+
+
+def enqueue_render(lesson_id: uuid.UUID) -> str:
+    if not uses_render_queue():
+        raise CloudTaskError("Render queue is not configured.")
+    settings = get_settings()
+    return _enqueue(
+        lesson_id,
+        queue=settings.cloud_tasks_render_queue.strip(),
+        target=settings.cloud_tasks_render_target_url.strip(),
+        task_id=f"studio-render-{lesson_id}-{uuid.uuid4().hex[:8]}",
+        failure="Failed to enqueue the lesson",
+    )
+
+
+def _enqueue(lesson_id: uuid.UUID, *, queue: str, target: str, task_id: str, failure: str) -> str:
+    settings = get_settings()
     project = settings.cloud_tasks_project.strip()
     location = settings.cloud_tasks_location.strip() or "us-central1"
-    queue = settings.cloud_tasks_queue.strip()
-    target = settings.cloud_tasks_target_url.strip()
     service_account = settings.cloud_tasks_service_account.strip()
-    audience = settings.cloud_tasks_oidc_audience.strip() or target
-    task_id = f"studio-script-{lesson_id}"
+    audience = target
+    if queue == settings.cloud_tasks_queue.strip() and settings.cloud_tasks_oidc_audience.strip():
+        audience = settings.cloud_tasks_oidc_audience.strip()
     parent = f"projects/{project}/locations/{location}/queues/{queue}"
     task_name = f"{parent}/tasks/{task_id}"
     deadline = settings.cloud_tasks_dispatch_deadline_seconds
@@ -76,14 +115,17 @@ def enqueue_script(lesson_id: uuid.UUID) -> str:
     if response.status_code == 409:
         return task_id
     if response.status_code >= 400:
-        raise CloudTaskError(f"Failed to enqueue the script ({response.status_code}).")
+        raise CloudTaskError(f"{failure} ({response.status_code}).")
     return task_id
 
 
-def verify_worker(authorization: str, retry_header: str) -> int:
+def verify_worker(authorization: str, retry_header: str, audience: str | None = None) -> int:
     settings = get_settings()
     service_account = settings.cloud_tasks_service_account.strip()
-    audience = settings.cloud_tasks_oidc_audience.strip() or settings.cloud_tasks_target_url.strip()
+    if audience is None:
+        audience = settings.cloud_tasks_oidc_audience.strip() or settings.cloud_tasks_target_url.strip()
+    else:
+        audience = audience.strip()
     if not service_account or not audience:
         raise CloudTaskError("Cloud Tasks worker auth is not configured.", 403)
     if not authorization.startswith("Bearer "):
