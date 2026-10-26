@@ -35,8 +35,8 @@ _PAGE = """<!DOCTYPE html>
     .timeline .when {{ width: 52px; flex: none; color: #8a8175; }}
     body.capture {{ overflow: visible; height: auto; }}
     body.capture h1, body.capture .controls, body.capture .timeline {{ display: none; }}
-    body.capture main {{ height: auto; min-height: 100vh; overflow: visible; display: flex; align-items: center; padding-top: 0; padding-bottom: 0; }}
-    body.capture .stage {{ width: 1280px; height: 720px; aspect-ratio: auto; flex: none; }}
+    body.capture main {{ height: auto; min-height: 0; overflow: visible; display: block; padding: 0; }}
+    body.capture .stage {{ width: 1280px; height: 720px; aspect-ratio: auto; flex: none; border-radius: 0; box-shadow: none; }}
   </style>
 </head>
 <body>

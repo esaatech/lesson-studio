@@ -112,7 +112,7 @@ async def _capture_frames(page_path: Path, times: list[float], folder: Path) -> 
         total = len(times)
         for index, time in enumerate(times):
             await page.evaluate("(t) => window.renderLessonFrame(t)", time)
-            await page.screenshot(path=str(folder / f"frame_{index:04d}.png"))
+            await page.locator("#stage").screenshot(path=str(folder / f"frame_{index:04d}.png"))
             if index % 30 == 0 or index == total - 1:
                 print(f"frame {index + 1}/{total}", file=sys.stderr)
         await browser.close()

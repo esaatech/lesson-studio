@@ -60,6 +60,10 @@ class LessonStore(Protocol):
         self, lesson_id: uuid.UUID, beats: list[dict[str, Any]], audio_dir: str, html_file: str
     ) -> LessonRecord | None: ...
 
+    def save_export(self, lesson_id: uuid.UUID, mp4_file: str) -> LessonRecord | None: ...
+
+    def commit(self) -> None: ...
+
 
 class SqlLessonStore:
     def __init__(self, session: Session) -> None:
@@ -144,3 +148,16 @@ class SqlLessonStore:
         row.updated_at = datetime.now(timezone.utc)
         self._session.flush()
         return LessonRecord.model_validate(row)
+
+    def save_export(self, lesson_id: uuid.UUID, mp4_file: str) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        row.mp4_file = mp4_file
+        row.status = "exported"
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return LessonRecord.model_validate(row)
+
+    def commit(self) -> None:
+        self._session.commit()

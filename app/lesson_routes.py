@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth import owner_id_from_authorization
 from app.config import get_settings
 from app.db import get_session
+from app.export_service import ExportFailed, write_export
 from app.lesson_store import LessonCreate, LessonRecord, LessonStore, SqlLessonStore
 from app.render_service import RenderFailed, run_queued_render, write_render
 from app.script_queue import CloudTaskError, verify_worker
@@ -19,6 +20,7 @@ from app.script_service import ScriptFailed, run_queued_script, write_script
 
 _MEDIA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.mp3$")
 _READY_TO_RENDER = {"draft", "render_failed", "rendered"}
+_READY_TO_EXPORT = {"rendered", "exported", "export_failed"}
 
 router = APIRouter()
 
@@ -125,6 +127,8 @@ def update_beat(
         return JSONResponse(status_code=404, content={"error": "Lesson not found"})
     if lesson.status == "rendering":
         return JSONResponse(status_code=409, content={"error": "The lesson is being made. Wait until it finishes to edit a line."})
+    if lesson.status == "exporting":
+        return JSONResponse(status_code=409, content={"error": "The video is being made. Wait until it finishes to edit a line."})
     saved = store.update_beat(lesson_id, beat_id, body.text, body.visual.strip(), body.checkpoint)
     if saved is None:
         return JSONResponse(status_code=404, content={"error": "Line not found"})
@@ -214,6 +218,48 @@ def _owned_output(raw: str) -> Path | None:
     if not path.is_file() or not path.is_relative_to(root):
         return None
     return path
+
+
+@router.post("/v1/lessons/{lesson_id}/export", response_model=LessonRecord)
+async def export_lesson_video(
+    lesson_id: uuid.UUID,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> LessonRecord | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    if lesson is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    if lesson.status == "exporting":
+        return JSONResponse(status_code=409, content={"error": "The video is already being made."})
+    if lesson.status not in _READY_TO_EXPORT:
+        return JSONResponse(status_code=409, content={"error": "Make the lesson before exporting it."})
+    if not lesson.html_file.strip():
+        return JSONResponse(status_code=400, content={"error": "The lesson page is not ready."})
+    marked = store.mark_status(lesson_id, "exporting")
+    if marked is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    store.commit()
+    return await _finish_export(store, marked)
+
+
+@router.get("/v1/lessons/{lesson_id}/video", response_model=None)
+def read_lesson_video(
+    lesson_id: uuid.UUID,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> FileResponse | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    path = _owned_output(lesson.mp4_file if lesson else "")
+    if lesson is None or path is None:
+        return JSONResponse(status_code=404, content={"error": "The video is not ready."})
+    return FileResponse(path, media_type="video/mp4", filename=f"{path.stem}.mp4")
+
+
+async def _finish_export(store: LessonStore, lesson: LessonRecord) -> LessonRecord | JSONResponse:
+    try:
+        return await write_export(store, lesson)
+    except ExportFailed as exc:
+        return JSONResponse(status_code=502, content={"error": exc.message, "id": str(exc.lesson_id)})
 
 
 async def _finish_render(store: LessonStore, lesson: LessonRecord) -> LessonRecord | JSONResponse:

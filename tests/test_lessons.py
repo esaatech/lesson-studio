@@ -66,6 +66,12 @@ class MemoryLessonStore:
     ) -> LessonRecord | None:
         return self._replace(lesson_id, beats=beats, audio_dir=audio_dir, html_file=html_file, status="rendered")
 
+    def save_export(self, lesson_id: uuid.UUID, mp4_file: str) -> LessonRecord | None:
+        return self._replace(lesson_id, mp4_file=mp4_file, status="exported")
+
+    def commit(self) -> None:
+        return None
+
     def _replace(self, lesson_id: uuid.UUID, **changes) -> LessonRecord | None:
         current = self.get(lesson_id)
         if current is None:
