@@ -13,7 +13,7 @@ _PAGE = """<!DOCTYPE html>
     body {{ margin: 0; overflow: hidden; font-family: Georgia, serif; background: #f6f3ec; color: #1d2430; }}
     main {{ max-width: 880px; width: 100%; height: 100%; margin: 0 auto; padding: 20px 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }}
     h1 {{ flex: none; font-size: 18px; font-weight: 600; margin: 0 0 8px; }}
-    .stage {{ flex: none; min-height: 240px; background: white; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(29, 36, 48, 0.06); }}
+    .stage {{ flex: none; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; box-sizing: border-box; background: white; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(29, 36, 48, 0.06); }}
     .columns {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; position: relative; min-height: 140px; }}
     .column {{ border-bottom: 2px solid #d9d2c5; text-align: center; padding-top: 72px; color: #8a8175; font-size: 13px; }}
     .digit {{ position: absolute; top: 8px; width: 64px; margin-left: -32px; text-align: center; font-size: 64px; line-height: 1; }}
@@ -36,7 +36,7 @@ _PAGE = """<!DOCTYPE html>
     body.capture {{ overflow: visible; height: auto; }}
     body.capture h1, body.capture .controls, body.capture .timeline {{ display: none; }}
     body.capture main {{ height: auto; min-height: 100vh; overflow: visible; display: flex; align-items: center; padding-top: 0; padding-bottom: 0; }}
-    body.capture .stage {{ width: 100%; }}
+    body.capture .stage {{ width: 1280px; height: 720px; aspect-ratio: auto; flex: none; }}
   </style>
 </head>
 <body>
