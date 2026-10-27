@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from app.visuals.schema import ResolvedVisual
+from app.visuals.stage import STAGE_CSS, STAGE_SCRIPT
 
 _PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -32,6 +33,7 @@ _PAGE = """<!DOCTYPE html>
     button {{ font: inherit; padding: 8px 14px; border-radius: 999px; border: 0; background: #1d2430; color: white; }}
     label {{ flex: 1; }}
     input {{ width: 100%; }}
+    {stage_css}
   </style>
 </head>
 <body>
@@ -54,110 +56,7 @@ _PAGE = """<!DOCTYPE html>
       return Math.min(1, Math.max(0, p));
     }}
 
-    function span(t, start, end) {{
-      if (end <= start) return t >= end ? 1 : 0;
-      if (t <= start) return 0;
-      if (t >= end) return 1;
-      return (t - start) / (end - start);
-    }}
-
-    function renderDigitSlide(settings, t, beat) {{
-      const view = beat || plan;
-      const cues = view.cues || {{}};
-      const duration = view.duration || 1;
-      const slideEnd = cues.slide_end ?? duration;
-      const from = columns.indexOf(settings.from_column);
-      const to = columns.indexOf(settings.to_column);
-      const move = span(t, 0, slideEnd);
-      const index = from + (to - from) * move;
-      const left = ((index + 0.5) / columns.length) * 100;
-      const labelOpacity = span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration);
-      const badgeOpacity = settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0;
-      stage.innerHTML = `
-        <div class="columns">
-          ${{columns.map((name) => `<div class="column">${{escapeHtml(name)}}</div>`).join("")}}
-          <div class="digit" style="left:${{left}}%">${{escapeHtml(settings.digit)}}</div>
-        </div>
-        <div class="label" style="opacity:${{labelOpacity}}">${{escapeHtml(settings.label)}}</div>
-        <div class="badge" style="opacity:${{badgeOpacity}}">${{escapeHtml(settings.badge)}}</div>`;
-    }}
-
-    function bare(word) {{
-      return word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "").toLowerCase();
-    }}
-
-    function escapeHtml(value) {{
-      return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }}
-
-    function revealTime(beat, index, count) {{
-      const cues = beat.cues || {{}};
-      const timed = cues["reveal_" + index];
-      if (timed != null) return timed;
-      return count ? (beat.duration || 1) * index / count : 0;
-    }}
-
-    function renderHighlightWords(settings, t, beat) {{
-      const view = beat || plan;
-      const tokens = settings.sentence.split(/(\\s+)/);
-      const on = tokens.map(() => false);
-      let cursor = 0;
-      settings.emphasis.forEach((phrase, index) => {{
-        if (t + 0.0001 < revealTime(view, index, settings.emphasis.length)) return;
-        phrase.split(/[\\s/]+/).map(bare).filter(Boolean).forEach((piece) => {{
-          for (let i = cursor; i < tokens.length; i++) {{
-            if (bare(tokens[i]) === piece) {{
-              on[i] = true;
-              cursor = i + 1;
-              break;
-            }}
-          }}
-        }});
-      }});
-      stage.innerHTML = `<div class="sentence">${{tokens.map((word, index) => on[index] ? `<span class="on">${{escapeHtml(word)}}</span>` : escapeHtml(word)).join("")}}</div>`;
-    }}
-
-    function renderLabelCallout(settings, t, beat) {{
-      const view = beat || plan;
-      stage.innerHTML = `<h2>${{escapeHtml(settings.title)}}</h2>` + settings.parts.map((part, index) => `
-        <div class="part" style="opacity:${{t + 0.0001 >= revealTime(view, index, settings.parts.length) ? 1 : 0}}">
-          <strong>${{escapeHtml(part.name)}}</strong>
-          <div>${{escapeHtml(part.detail)}}</div>
-        </div>`).join("");
-    }}
-
-    function renderPathTrace(settings, t, beat) {{
-      const view = beat || plan;
-      const count = settings.steps.length;
-      const times = settings.steps.map((_, index) => revealTime(view, index, count));
-      let amount = 0;
-      if (count <= 1) amount = t + 0.0001 >= (times[0] || 0) ? 1 : 0;
-      else if (t <= times[0]) amount = 0;
-      else if (t >= times[count - 1]) amount = 1;
-      else {{
-        for (let index = 0; index < count - 1; index++) {{
-          if (t < times[index + 1]) {{
-            const span = Math.max(0.001, times[index + 1] - times[index]);
-            amount = (index + (t - times[index]) / span) / (count - 1);
-            break;
-          }}
-        }}
-      }}
-      stage.innerHTML = `
-        <h2>${{escapeHtml(settings.title)}}</h2>
-        <div class="path"><div style="width:${{amount * 100}}%"></div></div>
-        <div class="steps">${{settings.steps.map((step, index) => {{
-          const opacity = t + 0.0001 >= times[index] ? 1 : 0.25;
-          return `<div class="step" style="opacity:${{opacity}}">${{escapeHtml(step)}}</div>`;
-        }}).join("")}}</div>`;
-    }}
-
-    const renderers = {{
-      "digit-slide": renderDigitSlide,
-      "highlight-words": renderHighlightWords,
-      "label-callout": renderLabelCallout,
-      "path-trace": renderPathTrace,
-    }};
+    {stage_script}
 
     const stage = document.getElementById("stage");
     const slider = document.getElementById("slider");
@@ -191,7 +90,7 @@ _PAGE = """<!DOCTYPE html>
 
     function frame(t) {{
       const value = Math.min(duration, Math.max(0, t));
-      renderers[plan.component](plan.settings, value);
+      renderers[plan.component](plan.settings, value, plan);
       placeStage();
       const label = value.toFixed(2) + "s / " + duration.toFixed(2) + "s";
       const name = phase(value);
@@ -230,7 +129,7 @@ def write_visual_page(visual: ResolvedVisual, directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     _copy_audio(visual, directory)
     plan_json = json.dumps(visual.model_dump()).replace("<", "\\u003c")
-    html = _PAGE.format(title=visual.id, plan_json=plan_json)
+    html = _PAGE.format(title=visual.id, plan_json=plan_json, stage_css=STAGE_CSS, stage_script=STAGE_SCRIPT)
     path = directory / f"{visual.id}.html"
     path.write_text(html)
     return path

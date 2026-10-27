@@ -75,3 +75,6 @@ def test_lesson_page_reveals_a_word_when_it_is_spoken(tmp_path):
     assert '"reveal_1": 2.57' in html
     assert "function escapeHtml" in html
     assert "function placeStage" in html
+    assert "function renderShapePicture" in html
+    assert "function renderArrowLink" in html
+    assert "function renderCodeLine" in html

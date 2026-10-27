@@ -173,4 +173,40 @@ def cues_for(component: str, settings: dict, words: list[WordTime], duration: fl
         return _reveal_cues(_part_names(list(settings.get("parts") or [])), words, length)
     if component == "path-trace":
         return _reveal_cues([str(step) for step in settings.get("steps") or []], words, length)
+    if component == "stroke-diagram":
+        return _reveal_cues(_mark_texts(list(settings.get("marks") or [])), words, length)
+    if component == "shape-picture":
+        labels = [str(settings.get("subject") or "")]
+        labels.extend(str(label) for label in settings.get("labels") or [])
+        return _reveal_cues(labels, words, length)
+    if component == "arrow-link":
+        return _reveal_cues(
+            [str(settings.get("left") or ""), str(settings.get("relation") or ""), str(settings.get("right") or "")],
+            words,
+            length,
+        )
+    if component == "before-after":
+        return _reveal_cues(
+            [str(settings.get("before_text") or ""), str(settings.get("after_text") or "")],
+            words,
+            length,
+        )
+    if component == "code-line":
+        return _reveal_cues([str(item) for item in settings.get("focus") or []], words, length)
+    if component == "measure":
+        phrases = [str(mark) for mark in settings.get("marks") or []]
+        caption = str(settings.get("caption") or "").strip()
+        if caption:
+            phrases.append(caption)
+        return _reveal_cues(phrases, words, length)
     return {}
+
+
+def _mark_texts(marks: list) -> list[str]:
+    texts = []
+    for mark in marks:
+        if isinstance(mark, dict):
+            texts.append(str(mark.get("text", "")))
+        else:
+            texts.append(str(mark))
+    return texts

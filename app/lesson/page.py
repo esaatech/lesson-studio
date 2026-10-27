@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+from app.visuals.stage import STAGE_CSS, STAGE_SCRIPT
+
 _PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,6 +39,7 @@ _PAGE = """<!DOCTYPE html>
     body.capture h1, body.capture .controls, body.capture .timeline {{ display: none; }}
     body.capture main {{ height: auto; min-height: 0; overflow: visible; display: block; padding: 0; }}
     body.capture .stage {{ width: 1280px; height: 720px; aspect-ratio: auto; flex: none; border-radius: 0; box-shadow: none; }}
+    {stage_css}
   </style>
 </head>
 <body>
@@ -130,96 +133,7 @@ _PAGE = """<!DOCTYPE html>
       return Math.min(1, Math.max(0, value));
     }}
 
-    function span(t, start, end) {{
-      if (end <= start) return t >= end ? 1 : 0;
-      if (t <= start) return 0;
-      if (t >= end) return 1;
-      return (t - start) / (end - start);
-    }}
-
-    function renderDigitSlide(settings, t, beat) {{
-      const cues = beat.cues || {{}};
-      const duration = beat.duration || 1;
-      const from = columns.indexOf(settings.from_column);
-      const to = columns.indexOf(settings.to_column);
-      const move = span(t, 0, cues.slide_end ?? duration);
-      const index = from + (to - from) * move;
-      const left = ((index + 0.5) / columns.length) * 100;
-      stage.innerHTML = `
-        <div class="columns">
-          ${{columns.map((name) => `<div class="column">${{escapeHtml(name)}}</div>`).join("")}}
-          <div class="digit" style="left:${{left}}%">${{escapeHtml(settings.digit)}}</div>
-        </div>
-        <div class="label" style="opacity:${{span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration)}}">${{escapeHtml(settings.label)}}</div>
-        <div class="badge" style="opacity:${{settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0}}">${{escapeHtml(settings.badge || "")}}</div>`;
-    }}
-
-    function bare(word) {{
-      return word.replace(/[^\\p{{L}}\\p{{N}}']/gu, "").toLowerCase();
-    }}
-
-    function escapeHtml(value) {{
-      return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }}
-
-    function revealTime(beat, index, count) {{
-      const cues = beat.cues || {{}};
-      const timed = cues["reveal_" + index];
-      if (timed != null) return timed;
-      return count ? (beat.duration || 1) * index / count : 0;
-    }}
-
-    function renderHighlightWords(settings, t, beat) {{
-      const tokens = settings.sentence.split(/(\\s+)/);
-      const on = tokens.map(() => false);
-      let cursor = 0;
-      settings.emphasis.forEach((phrase, index) => {{
-        if (t + 0.0001 < revealTime(beat, index, settings.emphasis.length)) return;
-        phrase.split(/[\\s/]+/).map(bare).filter(Boolean).forEach((piece) => {{
-          for (let i = cursor; i < tokens.length; i++) {{
-            if (bare(tokens[i]) === piece) {{
-              on[i] = true;
-              cursor = i + 1;
-              break;
-            }}
-          }}
-        }});
-      }});
-      stage.innerHTML = `<div class="sentence">${{tokens.map((word, index) => on[index] ? `<span class="on">${{escapeHtml(word)}}</span>` : escapeHtml(word)).join("")}}</div>`;
-    }}
-
-    function renderLabelCallout(settings, t, beat) {{
-      stage.innerHTML = `<h2>${{escapeHtml(settings.title)}}</h2>` + settings.parts.map((part, index) => `
-        <div class="part" style="opacity:${{t + 0.0001 >= revealTime(beat, index, settings.parts.length) ? 1 : 0}}"><strong>${{escapeHtml(part.name)}}</strong><div>${{escapeHtml(part.detail)}}</div></div>`).join("");
-    }}
-
-    function renderPathTrace(settings, t, beat) {{
-      const count = settings.steps.length;
-      const times = settings.steps.map((_, index) => revealTime(beat, index, count));
-      let amount = 0;
-      if (count <= 1) amount = t + 0.0001 >= (times[0] || 0) ? 1 : 0;
-      else if (t <= times[0]) amount = 0;
-      else if (t >= times[count - 1]) amount = 1;
-      else {{
-        for (let index = 0; index < count - 1; index++) {{
-          if (t < times[index + 1]) {{
-            const span = Math.max(0.001, times[index + 1] - times[index]);
-            amount = (index + (t - times[index]) / span) / (count - 1);
-            break;
-          }}
-        }}
-      }}
-      stage.innerHTML = `<h2>${{escapeHtml(settings.title)}}</h2>
-        <div class="path"><div style="width:${{amount * 100}}%"></div></div>
-        <div class="steps">${{settings.steps.map((step, index) => `<div style="opacity:${{t + 0.0001 >= times[index] ? 1 : 0.25}}">${{escapeHtml(step)}}</div>`).join("")}}</div>`;
-    }}
-
-    const renderers = {{
-      "digit-slide": renderDigitSlide,
-      "highlight-words": renderHighlightWords,
-      "label-callout": renderLabelCallout,
-      "path-trace": renderPathTrace,
-    }};
+    {stage_script}
 
     function beatAt(time) {{
       for (const beat of lesson.beats) {{
@@ -339,7 +253,12 @@ def write_lesson_page(lesson_id: str, beats: list[dict], total_duration: float, 
     payload = {"id": lesson_id, "total_duration": total_duration, "beats": beats}
     (directory / "lesson.json").write_text(json.dumps(payload, indent=2))
     lesson_json = json.dumps(payload).replace("<", "\\u003c")
-    html = _PAGE.format(title=lesson_id, lesson_json=lesson_json)
+    html = _PAGE.format(
+        title=lesson_id,
+        lesson_json=lesson_json,
+        stage_css=STAGE_CSS,
+        stage_script=STAGE_SCRIPT,
+    )
     path = directory / "index.html"
     path.write_text(html)
     return path

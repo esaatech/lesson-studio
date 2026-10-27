@@ -261,6 +261,65 @@ def test_missing_provider_key_is_a_message(monkeypatch):
     assert response.json() == {"error": "GEMINI_API_KEY is not set"}
 
 
+def test_drawn_pictures_are_offered_to_the_model():
+    instruction = build_visual_instruction(VISUAL_GENERATOR_PROMPT)
+
+    for name in ("stroke-diagram", "shape-picture", "arrow-link", "before-after", "code-line", "measure"):
+        assert name in instruction
+    assert "Prefer a drawn picture" in instruction
+
+
+def test_a_drawn_picture_follows_the_spoken_words():
+    from app.visuals.cues import cues_for
+    from app.visuals.schema import WordTime
+
+    words = [
+        WordTime(word="The", start=0.0, end=0.2),
+        WordTime(word="cat", start=0.3, end=0.6),
+        WordTime(word="is", start=0.7, end=0.9),
+        WordTime(word="on", start=1.1, end=1.4),
+        WordTime(word="the", start=1.4, end=1.6),
+        WordTime(word="box.", start=1.7, end=2.1),
+    ]
+
+    cues = cues_for("arrow-link", {"left": "cat", "relation": "on", "right": "box"}, words, 3.0)
+
+    assert cues["reveal_0"] == 0.3
+    assert cues["reveal_1"] == 1.1
+    assert cues["reveal_2"] == 1.7
+
+    choice = CHOICE_ADAPTER.validate_python(
+        {
+            "component": "shape-picture",
+            "settings": {"subject": "house", "title": "A house", "labels": ["roof", "door"]},
+        }
+    )
+    assert end_state_for(choice)["subject"] == "house"
+
+
+def test_a_measure_caption_waits_until_it_is_spoken():
+    from app.visuals.cues import cues_for
+    from app.visuals.schema import WordTime
+
+    words = [
+        WordTime(word="zero", start=0.2, end=0.5),
+        WordTime(word="five", start=1.2, end=1.6),
+        WordTime(word="ten", start=2.2, end=2.6),
+        WordTime(word="halfway", start=3.0, end=3.5),
+    ]
+
+    cues = cues_for(
+        "measure",
+        {"kind": "number-line", "marks": ["zero", "five", "ten"], "caption": "halfway"},
+        words,
+        4.0,
+    )
+
+    assert cues["reveal_0"] == 0.2
+    assert cues["reveal_2"] == 2.2
+    assert cues["reveal_3"] == 3.0
+
+
 def test_unknown_component_is_rejected():
     try:
         CHOICE_ADAPTER.validate_python({"component": "free-html", "settings": {}})
