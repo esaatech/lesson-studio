@@ -55,10 +55,12 @@ class SettingsPatch(BaseModel):
 
 SCRIPT_DRAFTER_PROMPT = """You draft a lesson as beats for a teacher.
 Return JSON only. Each beat has id, text, visual, and checkpoint.
-text is one spoken sentence. visual describes the picture a student watches during that sentence.
+text is one spoken sentence a teacher would say in one breath. One breath is one idea. A definition is one beat. An example is another beat.
+When a thought is finished, you may add one sentence a teacher would say next: a short check with the class, or a flash question about what was just taught. Fit the age and the thought.
+checkpoint is true on a sentence that asks the student something.
+visual describes one picture for that sentence. Labels are one or two words, and the picture fits in one frame.
 Describe a diagram being drawn, a simple object with labels, two things joined by an arrow, a before and an after, one line of code, or a number line or bar.
 Describe a highlighted sentence only when the lesson is about those exact words.
-checkpoint is true only when the lesson should pause for the student.
 Use the subject, grade, and objective you are given. Do not write HTML."""
 
 VISUAL_GENERATOR_PROMPT = """You choose a drawing component for one lesson beat.
@@ -67,6 +69,7 @@ Prefer a drawn picture when the beat explains an object, a relationship, a chang
 Use highlight-words only when the point of the beat is the wording itself.
 Use digit-slide only when one digit moves between place-value columns.
 On-screen words must be words that are actually spoken, so each part can appear on time.
+Labels are one or two words. A list or a row must fit in one 16:9 frame.
 The picture must be a function of progress p, from 0 to 1. The same p always shows the same frame.
 Return JSON only. Do not write HTML, CSS, or JavaScript.
 Do not invent an end state. The component records that when p is 1."""

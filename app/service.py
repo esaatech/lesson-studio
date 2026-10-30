@@ -15,7 +15,7 @@ from app.config import Settings, get_settings
 from app.elevenlabs import ElevenLabsError, synthesize
 from app.runtime_settings import get_store
 from app.schemas import LessonAudioRequest, LessonAudioResponse
-from app.timing import build_timeline, group_characters_into_words
+from app.timing import build_timeline, group_characters_into_words, mp3_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +58,11 @@ async def render_lesson_audio(
                 raise ElevenLabsError(502, str(exc), beat.id) from exc
             except OSError as exc:
                 raise ElevenLabsError(500, "Could not save the audio file", beat.id, upstream=False) from exc
+            recording = mp3_seconds(audio)
+            if recording is None:
+                recording = words[-1].end + runtime.audio.padding_seconds
             logger.info("rendered beat %s", beat.id)
-            return index, (beat.id, audio_file, words, beat.checkpoint)
+            return index, (beat.id, audio_file, words, recording)
 
         tasks = [
             asyncio.create_task(render_beat(index, beat))
@@ -74,11 +77,7 @@ async def render_lesson_audio(
             raise
 
     rendered = [item for _, item in sorted(rendered_by_index, key=lambda pair: pair[0])]
-    beats, total_duration = build_timeline(
-        rendered,
-        runtime.audio.padding_seconds,
-        runtime.audio.checkpoint_pause_seconds,
-    )
+    beats, total_duration = build_timeline(rendered)
     return LessonAudioResponse(
         request_id=request_id,
         output_dir=str(folder),

@@ -19,28 +19,28 @@ class HighlightWordsSettings(BaseModel):
 
 
 class CalloutPart(BaseModel):
-    name: str = Field(min_length=1, max_length=40)
-    detail: str = Field(default="", max_length=120)
+    name: str = Field(min_length=1, max_length=24, description="One or two words")
+    detail: str = Field(default="", max_length=48, description="A few words of detail")
 
 
 class LabelCalloutSettings(BaseModel):
     title: str = Field(min_length=1, max_length=80, description="Diagram title")
-    parts: list[CalloutPart] = Field(min_length=1, max_length=6, description="Parts that appear one by one")
+    parts: list[CalloutPart] = Field(min_length=1, max_length=4, description="Up to four parts that appear one by one")
 
 
 class PathTraceSettings(BaseModel):
     title: str = Field(min_length=1, max_length=80, description="What the path is showing")
-    steps: list[str] = Field(min_length=2, max_length=6, description="Labels along the path, in order")
+    steps: list[str] = Field(min_length=2, max_length=4, description="Short labels along the path, in order")
 
 
 class StrokeMark(BaseModel):
     shape: Literal["circle", "box", "arrow"] = Field(description="circle, box, or arrow")
-    text: str = Field(min_length=1, max_length=40, description="Label under the shape. Use words that are spoken.")
+    text: str = Field(min_length=1, max_length=24, description="One or two spoken words under the shape")
 
 
 class StrokeDiagramSettings(BaseModel):
     title: str = Field(min_length=1, max_length=80, description="Diagram title, shown the whole time")
-    marks: list[StrokeMark] = Field(min_length=1, max_length=4, description="Shapes that draw themselves when their label is spoken")
+    marks: list[StrokeMark] = Field(min_length=1, max_length=3, description="Up to three shapes that draw themselves when their label is spoken")
 
 
 class ShapePictureSettings(BaseModel):
@@ -48,13 +48,13 @@ class ShapePictureSettings(BaseModel):
         description="Object that is drawn: box, house, book, sun, tree, computer, person, ball, clock, or star"
     )
     title: str = Field(min_length=1, max_length=80, description="Caption beside the drawing")
-    labels: list[str] = Field(min_length=1, max_length=4, description="Labels that appear beside the object when spoken")
+    labels: list[str] = Field(min_length=1, max_length=3, description="Up to three labels of one or two words")
 
 
 class ArrowLinkSettings(BaseModel):
-    left: str = Field(min_length=1, max_length=60, description="Thing on the left. Use words that are spoken.")
+    left: str = Field(min_length=1, max_length=32, description="One or two spoken words on the left")
     relation: str = Field(min_length=1, max_length=40, description="Short relationship written on the arrow, such as on, contains, or becomes")
-    right: str = Field(min_length=1, max_length=60, description="Thing on the right. Use words that are spoken.")
+    right: str = Field(min_length=1, max_length=32, description="One or two spoken words on the right")
 
 
 class BeforeAfterSettings(BaseModel):

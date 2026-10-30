@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 class DraftBeat(BaseModel):
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-    text: str = Field(min_length=1, max_length=2000)
+    text: str = Field(min_length=1, max_length=220)
     visual: str = Field(min_length=1, max_length=2000)
     checkpoint: bool = False
 
 
 class DraftScript(BaseModel):
-    beats: list[DraftBeat] = Field(min_length=1, max_length=12)
+    beats: list[DraftBeat] = Field(min_length=1, max_length=24)
 
     @model_validator(mode="after")
     def beat_ids_must_be_unique(self) -> "DraftScript":

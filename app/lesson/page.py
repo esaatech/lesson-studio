@@ -1,4 +1,4 @@
-"""One page that plays a lesson: each beat's audio, then the checkpoint pause."""
+"""One page that plays a lesson: each beat's audio, then the next beat."""
 
 import json
 from pathlib import Path
@@ -78,7 +78,7 @@ _PAGE = """<!DOCTYPE html>
       const beat = beatAt(time);
       const local = Math.max(0, time - beat.start);
       const clip = beat.duration || 0;
-      if (!beat.audio_file || local >= clip - 0.03) {{
+      if (!beat.audio_file || local >= clip - 0.01) {{
         if (!player.paused) player.pause();
         return;
       }}
@@ -90,7 +90,7 @@ _PAGE = """<!DOCTYPE html>
         const start = () => {{
           if (started || token !== playToken || !playing) return;
           const at = Math.max(0, lessonTime - beat.start);
-          if (at >= clip - 0.03) return;
+          if (at >= clip - 0.01) return;
           started = true;
           try {{ player.currentTime = at; }} catch (err) {{}}
           const pending = player.play();
@@ -143,16 +143,6 @@ _PAGE = """<!DOCTYPE html>
       return lesson.beats[lesson.beats.length - 1];
     }}
 
-    function placeStage() {{
-      stage.style.justifyContent = "flex-start";
-      const first = stage.firstElementChild;
-      const last = stage.lastElementChild;
-      if (!first || !last) return;
-      const used = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
-      const available = stage.clientHeight - 56;
-      if (used <= available) stage.style.justifyContent = "center";
-    }}
-
     function paint(time) {{
       const beat = beatAt(time);
       const local = Math.min(Math.max(0, time - beat.start), beat.duration || 0);
@@ -203,7 +193,7 @@ _PAGE = """<!DOCTYPE html>
         const clip = beat.duration || 0;
         const same = player.dataset.beat === beat.id;
         const ended = same && player.ended;
-        const inSpeech = Boolean(beat.audio_file) && local < clip - 0.03 && !ended;
+        const inSpeech = Boolean(beat.audio_file) && local < clip - 0.01 && !ended;
         if (inSpeech) {{
           speakAt(lessonTime);
           const heard = beat.start + (player.currentTime || 0);

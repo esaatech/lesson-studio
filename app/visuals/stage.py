@@ -5,9 +5,10 @@ STAGE_CSS = """
     .mark-row { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
     .diagram { width: 100%; text-align: center; }
     .diagram .scene-title { text-align: center; }
-    .mark { width: 200px; text-align: center; }
-    .mark svg { width: 180px; height: 150px; display: block; margin: 0 auto; }
+    .mark { flex: 1 1 0; min-width: 0; max-width: 220px; text-align: center; }
+    .mark svg { width: 100%; height: auto; max-height: 150px; display: block; margin: 0 auto; }
     .mark figcaption { font-size: 22px; line-height: 1.3; margin-top: 8px; }
+    .fit { width: 100%; }
     .connector { width: 56px; height: 8px; background: #e6e0d6; border-radius: 999px; flex: none; }
     .connector > div { height: 8px; background: #2f6f4e; border-radius: 999px; }
     .shape-scene { display: flex; align-items: center; gap: 36px; width: 100%; }
@@ -297,4 +298,55 @@ STAGE_SCRIPT = r"""
       "code-line": renderCodeLine,
       "measure": renderMeasure,
     };
+
+    function contentBounds(node) {
+      const box = node.getBoundingClientRect();
+      let top = box.top;
+      let bottom = box.bottom;
+      let left = box.left;
+      let right = box.right;
+      for (const child of node.children) {
+        const inner = contentBounds(child);
+        top = Math.min(top, inner.top);
+        bottom = Math.max(bottom, inner.bottom);
+        left = Math.min(left, inner.left);
+        right = Math.max(right, inner.right);
+      }
+      return { top, bottom, left, right };
+    }
+
+    function placeStage() {
+      stage.style.justifyContent = "flex-start";
+      stage.style.alignItems = "stretch";
+      const first = stage.firstElementChild;
+      if (!first) return;
+      const pad = 28;
+      const availableH = stage.clientHeight - pad * 2;
+      const availableW = stage.clientWidth - pad * 2;
+      let top = Infinity;
+      let bottom = -Infinity;
+      let left = Infinity;
+      let right = -Infinity;
+      for (const child of stage.children) {
+        const box = contentBounds(child);
+        top = Math.min(top, box.top);
+        bottom = Math.max(bottom, box.bottom);
+        left = Math.min(left, box.left);
+        right = Math.max(right, box.right);
+      }
+      const usedH = Math.max(1, bottom - top);
+      const usedW = Math.max(1, right - left);
+      const scale = Math.min(1, availableH / usedH, availableW / usedW);
+      if (scale < 0.98) {
+        const wrap = document.createElement("div");
+        wrap.className = "fit";
+        while (stage.firstChild) wrap.append(stage.firstChild);
+        wrap.style.zoom = String(scale);
+        stage.append(wrap);
+        stage.style.justifyContent = "center";
+        stage.style.alignItems = "center";
+        return;
+      }
+      if (usedH <= availableH) stage.style.justifyContent = "center";
+    }
 """

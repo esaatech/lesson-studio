@@ -78,16 +78,6 @@ _PAGE = """<!DOCTYPE html>
       return "";
     }}
 
-    function placeStage() {{
-      stage.style.justifyContent = "flex-start";
-      const first = stage.firstElementChild;
-      const last = stage.lastElementChild;
-      if (!first || !last) return;
-      const used = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
-      const available = stage.clientHeight - 56;
-      if (used <= available) stage.style.justifyContent = "center";
-    }}
-
     function frame(t) {{
       const value = Math.min(duration, Math.max(0, t));
       renderers[plan.component](plan.settings, value, plan);
