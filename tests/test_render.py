@@ -159,7 +159,7 @@ def _patch_builders(monkeypatch, tmp_path: Path) -> None:
             total_duration=1.2,
         )
 
-    async def fake_build(payload, output_dir=None):
+    async def fake_build(payload, output_dir=None, on_progress=None):
         directory = Path(output_dir)
         directory.mkdir(parents=True, exist_ok=True)
         page = directory / "index.html"

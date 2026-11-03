@@ -46,7 +46,7 @@ The page the teacher watches and the MP4 are the same HTML. Word times come from
 
 These were added because generated lessons were too long, lists ran off the bottom of the frame, shape rows ran off the right edge, and the last word of a line was cut off.
 
-- One spoken line is one breath and one idea. A definition and an example are two lines. Draft text is capped at 220 characters. A script may have up to 24 lines (`app/script_draft.py`).
+- One spoken line is one breath and one idea. A definition and an example are two lines. Draft text is capped at 220 characters so one beat does not pack too many words. A script may have up to 100 lines (`app/script_draft.py`). Overflow is from too much on one picture, not from the number of lines.
 - After a finished thought, the model may add one spoken check with the class, or one flash question about what was just taught. The words are chosen for that age and that thought. Do not put sample questions in the prompt. The model copies them.
 - `checkpoint` is true on a sentence that asks the student something. It is a mark for later. The lesson does not stop.
 - A picture shows that one thing. Labels are one or two words. A list has at most four parts. A row of drawn shapes has at most three. If a picture is still too full, `placeStage` in `app/visuals/stage.py` scales it down with CSS `zoom` so the words stay whole. The frame is 16:9 and `overflow` is hidden.
@@ -86,6 +86,16 @@ Local `.env` leaves `EXPORT_JOB` empty, so a local export records in-process. Do
 Playwright browsers are in `$HOME/Library/Caches/ms-playwright`. The sandbox points `PLAYWRIGHT_BROWSERS_PATH` at a cache that has no browser. Poetry lives under `$HOME/Library/Caches/pypoetry/virtualenvs`. The studio venv is Python 3.13. System `python` may be 3.14 and has no pytest. Use `poetry run pytest`.
 
 This repo is outside the Cursor workspace. Git and process commands here need an explicit `cd` and full permissions. `working_directory` is often ignored and the shell stays in this repo, which has caused a push to hit the wrong remote.
+
+## Admin AI (esaaedu-backend)
+
+This service still drafts beats and pictures. Django Admin owns the two system prompts and which catalog model they use.
+
+- Seed: `python manage.py setup_studio_ai` in `/Users/joelivongbe/Documents/django/esaaedu-backend`.
+- Services: `studio_script_drafter`, `studio_visual_generator`, `studio_system_instruction`.
+- A saved Admin model wins over Django `.env`. This service's `.env` is the fallback until Admin calls `PUT /v1/settings`.
+- Django needs `LESSON_STUDIO_URL` and `LESSON_STUDIO_SETTINGS_TOKEN` (academy `env.example`). This service needs the same value in `SETTINGS_TOKEN` (`.env.example`).
+- Cloud Run: set env vars on the service. Django: `LESSON_STUDIO_URL` and `LESSON_STUDIO_SETTINGS_TOKEN`. This service: `SETTINGS_TOKEN` with the same value. Use `--update-env-vars`. See academy `ai_service/docs/AI_PLATFORM.md`.
 
 ## Help Center
 

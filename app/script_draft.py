@@ -23,7 +23,7 @@ class DraftBeat(BaseModel):
 
 
 class DraftScript(BaseModel):
-    beats: list[DraftBeat] = Field(min_length=1, max_length=24)
+    beats: list[DraftBeat] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def beat_ids_must_be_unique(self) -> "DraftScript":

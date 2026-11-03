@@ -79,8 +79,16 @@ async def compose_lesson(store: LessonStore, lesson: LessonRecord) -> LessonReco
             }
         )
 
+    def persist_pictures(beats: list) -> None:
+        store.save_beats(lesson.id, [dict(beat) for beat in beats])
+        store.commit()
+
     try:
-        built = await build_lesson({"id": str(lesson.id), "beats": payload}, directory)
+        built = await build_lesson(
+            {"id": str(lesson.id), "beats": payload},
+            directory,
+            on_progress=persist_pictures,
+        )
     except AIError as exc:
         raise RenderFailed(exc.message, lesson.id) from exc
     except ValidationError as exc:

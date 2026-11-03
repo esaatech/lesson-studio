@@ -326,3 +326,54 @@ def test_unknown_component_is_rejected():
     except ValidationError:
         return
     raise AssertionError("expected an unknown component to be rejected")
+
+
+class ModelRateLimitError(Exception):
+    pass
+
+
+def test_picture_rate_limit_is_retried(monkeypatch, tmp_path):
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.visuals import generate as generate_mod
+
+    calls = {"n": 0}
+    choice = CHOICE_ADAPTER.validate_python(
+        {
+            "component": "shape-picture",
+            "settings": {"subject": "house", "title": "A house", "labels": ["roof"]},
+        }
+    )
+
+    class FakeAgent:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def run(self, prompt):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ModelRateLimitError("too many requests")
+            return SimpleNamespace(output=choice)
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(generate_mod, "Agent", FakeAgent)
+    monkeypatch.setattr(generate_mod, "build_model", lambda _task: object())
+    monkeypatch.setattr(generate_mod.asyncio, "sleep", no_sleep)
+
+    beat = VisualBeat(id="b16", text="A house has a roof.", visual="Draw a house.")
+    visual = asyncio.run(generate_mod.generate_visual(beat, tmp_path))
+
+    assert calls["n"] == 2
+    assert visual.component == "shape-picture"
+    assert visual.id == "b16"
+
+
+def test_picture_rate_limit_message_names_the_beat():
+    from app.visuals.generate import _visual_error
+
+    message = _visual_error(VisualBeat(id="b16", text="A house.", visual="Draw a house."), ModelRateLimitError())
+    assert "b16" in message
+    assert "rate-limited" in message.lower() or "Rate-limited" in message

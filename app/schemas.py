@@ -17,7 +17,7 @@ class BeatIn(BaseModel):
 class LessonAudioRequest(BaseModel):
     voice_id: str | None = None
     model_id: str | None = None
-    beats: list[BeatIn] = Field(min_length=1, max_length=50)
+    beats: list[BeatIn] = Field(min_length=1, max_length=100)
 
     @field_validator("voice_id", "model_id")
     @classmethod

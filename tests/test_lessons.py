@@ -40,6 +40,9 @@ class MemoryLessonStore:
     def save_script(self, lesson_id: uuid.UUID, beats: list[dict]) -> LessonRecord | None:
         return self._replace(lesson_id, beats=beats, status="draft")
 
+    def save_beats(self, lesson_id: uuid.UUID, beats: list[dict]) -> LessonRecord | None:
+        return self._replace(lesson_id, beats=beats)
+
     def update_beat(
         self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
     ) -> LessonRecord | None:
@@ -53,7 +56,10 @@ class MemoryLessonStore:
                 beats.append(beat)
                 continue
             found = True
-            beats.append({**beat, "text": text, "visual": visual, "checkpoint": checkpoint})
+            updated = {**beat, "text": text, "visual": visual, "checkpoint": checkpoint}
+            updated.pop("component", None)
+            updated.pop("settings", None)
+            beats.append(updated)
         if not found:
             return None
         return self._replace(lesson_id, beats=beats)
@@ -129,7 +135,14 @@ def test_owner_can_edit_one_line():
             "/v1/lessons",
             json={
                 "topic": "CSS",
-                "beats": [{"id": "line-1", "text": "Plain text.", "visual": "A white page.", "checkpoint": False}],
+                "beats": [{
+                    "id": "line-1",
+                    "text": "Plain text.",
+                    "visual": "A white page.",
+                    "checkpoint": False,
+                    "component": "shape-picture",
+                    "settings": {"subject": "house", "title": "A house", "labels": ["roof"]},
+                }],
             },
         )
         lesson_id = created.json()["id"]
@@ -142,6 +155,7 @@ def test_owner_can_edit_one_line():
         assert beat["text"] == "Styled text."
         assert beat["visual"] == "A blue heading."
         assert beat["checkpoint"] is True
+        assert "component" not in beat
     finally:
         app.dependency_overrides.clear()
 

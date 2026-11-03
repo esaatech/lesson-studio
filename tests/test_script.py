@@ -112,3 +112,34 @@ def test_queue_worker_rejects_a_missing_token(lesson_client):
 
     assert response.status_code == 403
     assert store.get(lesson.id).status == "drafting"
+
+
+def test_a_script_may_have_one_hundred_short_lines():
+    from pydantic import ValidationError
+
+    from app.script_draft import DraftScript
+
+    beats = [
+        {"id": f"b{i}", "text": f"Line {i} is one breath.", "visual": "One picture.", "checkpoint": False}
+        for i in range(1, 101)
+    ]
+    script = DraftScript(beats=beats)
+    assert len(script.beats) == 100
+
+    try:
+        DraftScript(beats=[*beats, {"id": "b101", "text": "One more.", "visual": "One picture."}])
+    except ValidationError:
+        return
+    raise AssertionError("expected more than 100 lines to be rejected")
+
+
+def test_one_line_cannot_pack_a_paragraph():
+    from pydantic import ValidationError
+
+    from app.script_draft import DraftBeat
+
+    try:
+        DraftBeat(id="b1", text="x" * 221, visual="One picture.")
+    except ValidationError:
+        return
+    raise AssertionError("expected a 221 character line to be rejected")

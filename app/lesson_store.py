@@ -50,6 +50,8 @@ class LessonStore(Protocol):
 
     def save_script(self, lesson_id: uuid.UUID, beats: list[dict[str, Any]]) -> LessonRecord | None: ...
 
+    def save_beats(self, lesson_id: uuid.UUID, beats: list[dict[str, Any]]) -> LessonRecord | None: ...
+
     def update_beat(
         self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
     ) -> LessonRecord | None: ...
@@ -105,6 +107,15 @@ class SqlLessonStore:
         self._session.flush()
         return LessonRecord.model_validate(row)
 
+    def save_beats(self, lesson_id: uuid.UUID, beats: list[dict[str, Any]]) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        row.beats = list(beats)
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return LessonRecord.model_validate(row)
+
     def update_beat(
         self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
     ) -> LessonRecord | None:
@@ -118,7 +129,10 @@ class SqlLessonStore:
                 beats.append(beat)
                 continue
             found = True
-            beats.append({**beat, "text": text, "visual": visual, "checkpoint": checkpoint})
+            updated = {**beat, "text": text, "visual": visual, "checkpoint": checkpoint}
+            updated.pop("component", None)
+            updated.pop("settings", None)
+            beats.append(updated)
         if not found:
             return None
         row.beats = beats
