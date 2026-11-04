@@ -101,7 +101,8 @@ async def compose_lesson(store: LessonStore, lesson: LessonRecord) -> LessonReco
         stored.append(
             {
                 **raw,
-                "component": picture.get("component", ""),
+                "component": picture.get("component") or raw.get("component") or "",
+                "settings": raw.get("settings") or {},
                 "start": picture.get("start"),
                 "end": picture.get("end"),
                 "pause_after": picture.get("pause_after"),

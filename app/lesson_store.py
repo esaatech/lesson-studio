@@ -39,6 +39,27 @@ class LessonRecord(BaseModel):
     updated_at: datetime
 
 
+def layout_with_piece(beat: dict[str, Any], piece: str, x: float, y: float) -> dict[str, Any]:
+    layout = dict(beat.get("layout") or {}) if isinstance(beat.get("layout"), dict) else {}
+    pieces = dict(layout.get("pieces") or {}) if isinstance(layout.get("pieces"), dict) else {}
+    pieces[piece] = {"x": float(x), "y": float(y)}
+    layout["pieces"] = pieces
+    return {**beat, "layout": layout}
+
+
+def copy_layout(layout: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(layout, dict):
+        return {}
+    pieces: dict[str, dict[str, float]] = {}
+    raw_pieces = layout.get("pieces")
+    if isinstance(raw_pieces, dict):
+        for key, value in raw_pieces.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                continue
+            pieces[key] = {"x": float(value.get("x") or 0), "y": float(value.get("y") or 0)}
+    return {"pieces": pieces} if pieces else {}
+
+
 class LessonStore(Protocol):
     def create(self, owner_id: str, topic: str, beats: list[dict[str, Any]], status: str = "draft") -> LessonRecord: ...
 
@@ -54,6 +75,10 @@ class LessonStore(Protocol):
 
     def update_beat(
         self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
+    ) -> LessonRecord | None: ...
+
+    def update_beat_layout(
+        self, lesson_id: uuid.UUID, beat_id: str, piece: str, x: float, y: float
     ) -> LessonRecord | None: ...
 
     def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None: ...
@@ -133,6 +158,27 @@ class SqlLessonStore:
             updated.pop("component", None)
             updated.pop("settings", None)
             beats.append(updated)
+        if not found:
+            return None
+        row.beats = beats
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return LessonRecord.model_validate(row)
+
+    def update_beat_layout(
+        self, lesson_id: uuid.UUID, beat_id: str, piece: str, x: float, y: float
+    ) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        beats = []
+        found = False
+        for beat in list(row.beats or []):
+            if str(beat.get("id")) != beat_id:
+                beats.append(beat)
+                continue
+            found = True
+            beats.append(layout_with_piece(beat, piece, x, y))
         if not found:
             return None
         row.beats = beats

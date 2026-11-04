@@ -6,13 +6,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.auth import owner_id_from_authorization
 from app.config import get_settings
 from app.db import get_session
 from app.export_service import ExportFailed, write_export
+from app.lesson.page import rewrite_lesson_page
 from app.lesson_store import LessonCreate, LessonRecord, LessonStore, SqlLessonStore
 from app.render_service import RenderFailed, run_queued_render, write_render
 from app.script_queue import CloudTaskError, verify_worker
@@ -135,6 +136,35 @@ def update_beat(
     return saved
 
 
+class BeatLayout(BaseModel):
+    piece: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
+    x: float = Field(ge=-50, le=50)
+    y: float = Field(ge=-50, le=50)
+
+
+@router.patch("/v1/lessons/{lesson_id}/beats/{beat_id}/layout", response_model=LessonRecord)
+def update_beat_layout(
+    lesson_id: uuid.UUID,
+    beat_id: str,
+    body: BeatLayout,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> LessonRecord | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    if lesson is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    if lesson.status == "rendering":
+        return JSONResponse(status_code=409, content={"error": "The lesson is being made. Wait until it finishes to move a piece."})
+    if lesson.status == "exporting":
+        return JSONResponse(status_code=409, content={"error": "The video is being made. Wait until it finishes to move a piece."})
+    saved = store.update_beat_layout(lesson_id, beat_id, body.piece, body.x, body.y)
+    if saved is None:
+        return JSONResponse(status_code=404, content={"error": "Line not found"})
+    if saved.html_file.strip():
+        rewrite_lesson_page(saved.html_file, saved.beats)
+    return saved
+
+
 @router.post("/v1/lessons/{lesson_id}/render", response_model=LessonRecord)
 async def render_lesson(
     lesson_id: uuid.UUID,
@@ -191,6 +221,7 @@ def read_lesson_page(
     path = _owned_output(lesson.html_file if lesson else "")
     if lesson is None or path is None:
         return JSONResponse(status_code=404, content={"error": "The lesson page is not ready."})
+    rewrite_lesson_page(str(path), lesson.beats)
     return FileResponse(path, media_type="text/html")
 
 

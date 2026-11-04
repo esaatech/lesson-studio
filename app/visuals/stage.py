@@ -9,6 +9,9 @@ STAGE_CSS = """
     .mark svg { width: 100%; height: auto; max-height: 150px; display: block; margin: 0 auto; }
     .mark figcaption { font-size: 22px; line-height: 1.3; margin-top: 8px; }
     .fit { width: 100%; }
+    [data-drag] { cursor: grab; touch-action: none; user-select: none; }
+    [data-drag].dragging { cursor: grabbing; z-index: 2; }
+    body.capture [data-drag] { cursor: default; }
     .connector { width: 56px; height: 8px; background: #e6e0d6; border-radius: 999px; flex: none; }
     .connector > div { height: 8px; background: #2f6f4e; border-radius: 999px; }
     .shape-scene { display: flex; align-items: center; gap: 36px; width: 100%; }
@@ -90,10 +93,10 @@ STAGE_SCRIPT = r"""
       stage.innerHTML = `
         <div class="columns">
           ${columns.map((name) => `<div class="column">${escapeHtml(name)}</div>`).join("")}
-          <div class="digit" style="left:${left}%">${escapeHtml(settings.digit)}</div>
+          <div class="digit" data-drag="digit" style="left:${left}%">${escapeHtml(settings.digit)}</div>
         </div>
-        <div class="label" style="opacity:${span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration)}">${escapeHtml(settings.label)}</div>
-        <div class="badge" style="opacity:${settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0}">${escapeHtml(settings.badge || "")}</div>`;
+        <div class="label" data-drag="label" style="opacity:${span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration)}">${escapeHtml(settings.label)}</div>
+        <div class="badge" data-drag="badge" style="opacity:${settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0}">${escapeHtml(settings.badge || "")}</div>`;
     }
 
     function renderHighlightWords(settings, t, beat) {
@@ -112,12 +115,12 @@ STAGE_SCRIPT = r"""
           }
         });
       });
-      stage.innerHTML = `<div class="sentence">${tokens.map((word, index) => on[index] ? `<span class="on">${escapeHtml(word)}</span>` : escapeHtml(word)).join("")}</div>`;
+      stage.innerHTML = `<div class="sentence" data-drag="sentence">${tokens.map((word, index) => on[index] ? `<span class="on">${escapeHtml(word)}</span>` : escapeHtml(word)).join("")}</div>`;
     }
 
     function renderLabelCallout(settings, t, beat) {
-      stage.innerHTML = `<h2 class="scene-title">${escapeHtml(settings.title)}</h2>` + settings.parts.map((part, index) => `
-        <div class="part" style="opacity:${shown(t, beat, index, settings.parts.length) ? 1 : 0}"><strong>${escapeHtml(part.name)}</strong><div>${escapeHtml(part.detail)}</div></div>`).join("");
+      stage.innerHTML = `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2>` + settings.parts.map((part, index) => `
+        <div class="part" data-drag="part-${index}" style="opacity:${shown(t, beat, index, settings.parts.length) ? 1 : 0}"><strong>${escapeHtml(part.name)}</strong><div>${escapeHtml(part.detail)}</div></div>`).join("");
     }
 
     function renderPathTrace(settings, t, beat) {
@@ -136,9 +139,9 @@ STAGE_SCRIPT = r"""
           }
         }
       }
-      stage.innerHTML = `<h2 class="scene-title">${escapeHtml(settings.title)}</h2>
+      stage.innerHTML = `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2>
         <div class="path"><div style="width:${amount * 100}%"></div></div>
-        <div class="steps">${settings.steps.map((step, index) => `<div style="opacity:${t + 0.0001 >= times[index] ? 1 : 0.25}">${escapeHtml(step)}</div>`).join("")}</div>`;
+        <div class="steps">${settings.steps.map((step, index) => `<div data-drag="step-${index}" style="opacity:${t + 0.0001 >= times[index] ? 1 : 0.25}">${escapeHtml(step)}</div>`).join("")}</div>`;
     }
 
     function renderStrokeDiagram(settings, t, beat) {
@@ -158,9 +161,9 @@ STAGE_SCRIPT = r"""
         let drawing = `<circle cx="70" cy="60" r="40" ${strokeAttrs(amount)}/>`;
         if (shape === "box") drawing = `<rect x="22" y="22" width="96" height="76" rx="16" ${strokeAttrs(amount)}/>`;
         if (shape === "arrow") drawing = `<path d="M18 60 H108 M108 60 L86 40 M108 60 L86 80" ${strokeAttrs(amount)}/>`;
-        parts.push(`<figure class="mark"><svg viewBox="0 0 140 120">${drawing}</svg><figcaption style="opacity:${amount}">${escapeHtml(mark.text)}</figcaption></figure>`);
+        parts.push(`<figure class="mark" data-drag="mark-${index}"><svg viewBox="0 0 140 120">${drawing}</svg><figcaption style="opacity:${amount}">${escapeHtml(mark.text)}</figcaption></figure>`);
       });
-      stage.innerHTML = `<div class="diagram"><h2 class="scene-title">${escapeHtml(settings.title)}</h2><div class="mark-row">${parts.join("")}</div></div>`;
+      stage.innerHTML = `<div class="diagram"><h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2><div class="mark-row">${parts.join("")}</div></div>`;
     }
 
     const SHAPE_PATHS = {
@@ -184,12 +187,12 @@ STAGE_SCRIPT = r"""
       const path = SHAPE_PATHS[settings.subject] || SHAPE_PATHS.box;
       const items = labels.map((label, index) => {
         const opacity = shown(t, beat, index + 1, count) ? 1 : 0;
-        return `<li style="opacity:${opacity}">${escapeHtml(label)}</li>`;
+        return `<li data-drag="label-${index}" style="opacity:${opacity};pointer-events:${opacity ? "auto" : "none"}">${escapeHtml(label)}</li>`;
       }).join("");
       stage.innerHTML = `<div class="shape-scene">
-        <svg class="shape-svg" viewBox="0 0 200 160"><path d="${path}" ${strokeAttrs(amount)}/></svg>
+        <svg class="shape-svg" data-drag="drawing" viewBox="0 0 200 160"><path d="${path}" ${strokeAttrs(amount)}/></svg>
         <div class="shape-copy">
-          <h2 class="scene-title">${escapeHtml(settings.title)}</h2>
+          <h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2>
           <ul class="shape-labels">${items}</ul>
         </div>
       </div>`;
@@ -205,9 +208,9 @@ STAGE_SCRIPT = r"""
       const right = shown(t, beat, 2, 3) ? 1 : 0.2;
       const relation = shown(t, beat, 1, 3) ? 1 : 0;
       stage.innerHTML = `<div class="arrow-row">
-        <div class="link-card" style="opacity:${left}">${escapeHtml(settings.left)}</div>
-        <div class="link-bridge">${bridge(link)}<div class="relation" style="opacity:${relation}">${escapeHtml(settings.relation)}</div></div>
-        <div class="link-card" style="opacity:${right}">${escapeHtml(settings.right)}</div>
+        <div class="link-card" data-drag="left" style="opacity:${left}">${escapeHtml(settings.left)}</div>
+        <div class="link-bridge">${bridge(link)}<div class="relation" data-drag="relation" style="opacity:${relation}">${escapeHtml(settings.relation)}</div></div>
+        <div class="link-card" data-drag="right" style="opacity:${right}">${escapeHtml(settings.right)}</div>
       </div>`;
     }
 
@@ -216,9 +219,9 @@ STAGE_SCRIPT = r"""
       const after = shown(t, beat, 1, 2) ? 1 : 0.2;
       const link = span(t, revealTime(beat, 0, 2), revealTime(beat, 1, 2));
       stage.innerHTML = `<div class="compare">
-        <article class="compare-card" style="opacity:${before}"><p class="kicker">${escapeHtml(settings.before_label)}</p><p class="compare-text">${escapeHtml(settings.before_text)}</p></article>
+        <article class="compare-card" data-drag="before" style="opacity:${before}"><p class="kicker">${escapeHtml(settings.before_label)}</p><p class="compare-text">${escapeHtml(settings.before_text)}</p></article>
         <div class="link-bridge">${bridge(link)}</div>
-        <article class="compare-card after" style="opacity:${after}"><p class="kicker">${escapeHtml(settings.after_label)}</p><p class="compare-text">${escapeHtml(settings.after_text)}</p></article>
+        <article class="compare-card after" data-drag="after" style="opacity:${after}"><p class="kicker">${escapeHtml(settings.after_label)}</p><p class="compare-text">${escapeHtml(settings.after_text)}</p></article>
       </div>`;
     }
 
@@ -236,7 +239,7 @@ STAGE_SCRIPT = r"""
         const key = bare(word);
         return key && revealed.includes(key) ? `<span class="on">${escapeHtml(word)}</span>` : escapeHtml(word);
       }).join("");
-      stage.innerHTML = `<div class="code-card"><div class="code-bar"><i></i><i></i><i></i></div><pre>${code}</pre></div>`;
+      stage.innerHTML = `<div class="code-card" data-drag="code"><div class="code-bar"><i></i><i></i><i></i></div><pre>${code}</pre></div>`;
     }
 
     function renderMeasure(settings, t, beat) {
@@ -258,8 +261,8 @@ STAGE_SCRIPT = r"""
         pos = previous + (next - previous) * span(t, start, end);
       }
       const captionOpacity = caption && shown(t, beat, count, slots) ? 1 : 0;
-      const title = `<h2 class="scene-title">${escapeHtml(settings.title)}</h2>`;
-      const note = caption ? `<p class="caption" style="opacity:${captionOpacity}">${escapeHtml(caption)}</p>` : "";
+      const title = `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2>`;
+      const note = caption ? `<p class="caption" data-drag="caption" style="opacity:${captionOpacity}">${escapeHtml(caption)}</p>` : "";
       if (settings.kind === "bar") {
         let fill = 0;
         if (revealed > 0) {

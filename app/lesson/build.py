@@ -7,6 +7,7 @@ from app.visuals.generate import generate_visual, preview_visual
 from app.visuals.schema import VisualBeat
 from app.lesson.page import write_lesson_page
 from app.lesson.timeline import place_beats
+from app.lesson_store import copy_layout
 
 
 async def build_lesson(
@@ -41,6 +42,9 @@ async def build_lesson(
         beat["text"] = str(raw.get("text") or beat.get("text") or "")
         if not beat.get("audio_file"):
             beat["audio_file"] = str(raw.get("audio_file") or "")
+        layout = copy_layout(raw.get("layout") if isinstance(raw.get("layout"), dict) else beat.get("layout"))
+        if layout:
+            beat["layout"] = layout
     page = write_lesson_page(lesson_id, placed, total, directory)
     return {
         "id": lesson_id,

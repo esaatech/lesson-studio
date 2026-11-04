@@ -35,8 +35,9 @@ _PAGE = """<!DOCTYPE html>
     .timeline button {{ display: flex; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid #e6e0d6; background: transparent; color: inherit; font: inherit; cursor: pointer; }}
     .timeline button.on {{ background: #e7f0e4; }}
     .timeline .when {{ width: 52px; flex: none; color: #8a8175; }}
+    .hint {{ flex: none; margin: 8px 0 0; font-family: sans-serif; font-size: 13px; color: #8a8175; }}
     body.capture {{ overflow: visible; height: auto; }}
-    body.capture h1, body.capture .controls, body.capture .timeline {{ display: none; }}
+    body.capture h1, body.capture .controls, body.capture .timeline, body.capture .hint {{ display: none; }}
     body.capture main {{ height: auto; min-height: 0; overflow: visible; display: block; padding: 0; }}
     body.capture .stage {{ width: 1280px; height: 720px; aspect-ratio: auto; flex: none; border-radius: 0; box-shadow: none; }}
     {stage_css}
@@ -46,6 +47,7 @@ _PAGE = """<!DOCTYPE html>
   <main>
     <h1 id="title"></h1>
     <div class="stage" id="stage"></div>
+    <p class="hint">Drag the title, a label, or the drawing. Each piece stays where you put it for Play and Download.</p>
     <div class="controls">
       <button id="play" type="button">Play</button>
       <label>Time <output id="readout">0.00s</output>
@@ -146,8 +148,12 @@ _PAGE = """<!DOCTYPE html>
     function paint(time) {{
       const beat = beatAt(time);
       const local = Math.min(Math.max(0, time - beat.start), beat.duration || 0);
-      renderers[beat.component](beat.settings, local, beat);
-      placeStage();
+      const draw = renderers[beat.component];
+      if (typeof draw === "function" && beat.settings) {{
+        draw(beat.settings, local, beat);
+        placeStage();
+        applyLayout(beat);
+      }}
       const held = time >= beat.end ? " · pause" : "";
       readout.textContent = time.toFixed(2) + "s / " + lesson.total_duration.toFixed(2) + "s · " + beat.id + held;
       for (const id of Object.keys(beatButtons)) beatButtons[id].classList.toggle("on", id === beat.id);
@@ -167,6 +173,80 @@ _PAGE = """<!DOCTYPE html>
     function stopAudio() {{
       player.pause();
     }}
+
+    function piecesOf(beat) {{
+      const layout = (beat && beat.layout) || {{}};
+      return layout.pieces && typeof layout.pieces === "object" ? layout.pieces : {{}};
+    }}
+
+    function offsetOf(pieces, id) {{
+      const item = pieces[id] || {{}};
+      return {{ x: Number(item.x) || 0, y: Number(item.y) || 0 }};
+    }}
+
+    function placePiece(node, x, y) {{
+      node.style.transform = "translate(" + (x * stage.clientWidth / 100) + "px," + (y * stage.clientHeight / 100) + "px)";
+    }}
+
+    function applyLayout(beat) {{
+      const pieces = piecesOf(beat);
+      stage.querySelectorAll("[data-drag]").forEach((node) => {{
+        const layout = offsetOf(pieces, node.getAttribute("data-drag"));
+        placePiece(node, layout.x, layout.y);
+      }});
+    }}
+
+    let drag = null;
+
+    stage.addEventListener("pointerdown", (event) => {{
+      if (document.body.classList.contains("capture") || playing || event.button) return;
+      const node = event.target.closest("[data-drag]");
+      if (!node || !stage.contains(node)) return;
+      const beat = beatAt(lessonTime);
+      const piece = node.getAttribute("data-drag");
+      if (!piece) return;
+      const layout = offsetOf(piecesOf(beat), piece);
+      drag = {{
+        beat: beat,
+        node: node,
+        piece: piece,
+        pointer: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: layout.x,
+        originY: layout.y,
+      }};
+      node.classList.add("dragging");
+      node.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    }});
+
+    stage.addEventListener("pointermove", (event) => {{
+      if (!drag || event.pointerId !== drag.pointer) return;
+      drag.x = Math.min(50, Math.max(-50, drag.originX + (event.clientX - drag.startX) / stage.clientWidth * 100));
+      drag.y = Math.min(50, Math.max(-50, drag.originY + (event.clientY - drag.startY) / stage.clientHeight * 100));
+      placePiece(drag.node, drag.x, drag.y);
+    }});
+
+    function finishDrag(event) {{
+      if (!drag || event.pointerId !== drag.pointer) return;
+      drag.node.classList.remove("dragging");
+      if (drag.x != null && drag.y != null) {{
+        const pieces = Object.assign({{}}, piecesOf(drag.beat));
+        pieces[drag.piece] = {{ x: Math.round(drag.x * 10) / 10, y: Math.round(drag.y * 10) / 10 }};
+        drag.beat.layout = Object.assign({{}}, drag.beat.layout || {{}}, {{ pieces: pieces }});
+        window.parent.postMessage({{
+          type: "studio-layout",
+          beatId: drag.beat.id,
+          piece: drag.piece,
+          x: pieces[drag.piece].x,
+          y: pieces[drag.piece].y,
+        }}, "*");
+      }}
+      drag = null;
+    }}
+    stage.addEventListener("pointerup", finishDrag);
+    stage.addEventListener("pointercancel", finishDrag);
 
     play.addEventListener("click", () => {{
       playing = !playing;
@@ -252,6 +332,64 @@ def write_lesson_page(lesson_id: str, beats: list[dict], total_duration: float, 
     path = directory / "index.html"
     path.write_text(html)
     return path
+
+
+def rewrite_lesson_page(html_file: str, beats: list[dict] | None = None) -> None:
+    path = Path(html_file)
+    if not path.is_file():
+        return
+    directory = path.parent
+    try:
+        record = load_lesson_record(directory)
+    except (OSError, ValueError, json.JSONDecodeError):
+        record = {"beats": [], "total_duration": 0}
+    existing = {str(item.get("id")): dict(item) for item in record.get("beats") or []}
+    source = beats if beats is not None else list(record.get("beats") or [])
+    merged = [_merge_saved_beat(directory, existing.get(str(beat.get("id"))), beat) for beat in source]
+    if not merged:
+        return
+    total = float(record.get("total_duration") or 0)
+    for beat in merged:
+        total = max(total, float(beat.get("end") or 0) + float(beat.get("pause_after") or 0))
+    write_lesson_page(directory.name, merged, total, directory)
+
+
+def _merge_saved_beat(directory: Path, previous: dict | None, incoming: dict) -> dict:
+    beat = dict(previous or {})
+    for key, value in incoming.items():
+        if value is not None:
+            beat[key] = value
+    if beat.get("settings"):
+        return beat
+    plan = _plan_from_preview(directory, str(beat.get("id") or ""))
+    if not plan:
+        return beat
+    if plan.get("settings"):
+        beat["settings"] = plan["settings"]
+    if not beat.get("component") and plan.get("component"):
+        beat["component"] = plan["component"]
+    return beat
+
+
+def _plan_from_preview(directory: Path, beat_id: str) -> dict | None:
+    if not beat_id:
+        return None
+    preview = directory / f"{beat_id}.html"
+    if not preview.is_file():
+        return None
+    html = preview.read_text()
+    marker = "const plan = "
+    start = html.find(marker)
+    if start < 0:
+        return None
+    start += len(marker)
+    end = html.find(";\n", start)
+    if end < 0:
+        return None
+    try:
+        return json.loads(html[start:end])
+    except json.JSONDecodeError:
+        return None
 
 
 def _with_spoken_cues(beat: dict) -> dict:

@@ -61,7 +61,9 @@ The user was clear about the next product step, and it is not in the code.
 
 When a lesson is posted, the teacher adds a pause at a checkpoint line. The recording itself never pauses. At that pause an AI listens. If the student understands, the lesson continues. If the student has a question, the AI answers from the script. Do not put that silence back into the MP4 or the lesson clock.
 
-Also later, and not started: dragging a sentence up or down on the page, and adding the downloaded MP4 to the course.
+Teachers can drag the title, a label, or the drawing on the lesson page. Each piece is stored on the beat as `layout.pieces[id] = {x, y}` in percents of the stage, written back into `index.html` / `lesson.json`, and used by Play and the MP4. Do not drop that on export.
+
+Also later, and not started: adding the downloaded MP4 to the course.
 
 ## Cloud
 

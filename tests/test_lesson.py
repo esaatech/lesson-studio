@@ -49,6 +49,45 @@ def test_lesson_page_lists_every_beat(tmp_path):
     assert 'get("capture")' in html
     saved = json.loads((tmp_path / "lesson.json").read_text())
     assert saved["total_duration"] == 10.296
+    assert "studio-layout" in html
+    assert "applyLayout" in html
+
+
+def test_a_dragged_place_is_written_into_the_page(tmp_path):
+    placed, total = place_beats([_beat("b1", 3.0)])
+    placed[0]["layout"] = {"pieces": {"title": {"x": -18.5, "y": 4.0}}}
+    placed[0]["text"] = "Welcome."
+    path = write_lesson_page("welcome", placed, total, tmp_path)
+    html = path.read_text()
+    saved = json.loads((tmp_path / "lesson.json").read_text())
+
+    assert saved["beats"][0]["layout"] == {"pieces": {"title": {"x": -18.5, "y": 4.0}}}
+    assert '"x": -18.5' in html
+    assert "data-drag" in html
+    assert path.read_text() == html
+
+
+def test_rewrite_keeps_picture_settings_when_the_database_omits_them(tmp_path):
+    from app.lesson.page import rewrite_lesson_page
+
+    placed, total = place_beats([_beat("b1", 3.0)])
+    placed[0]["text"] = "Welcome."
+    placed[0]["settings"] = {"subject": "house", "title": "English Adventure", "labels": ["Welcome"]}
+    placed[0]["component"] = "shape-picture"
+    path = write_lesson_page("welcome", placed, total, tmp_path)
+    (tmp_path / "b1.html").write_text(
+        'const plan = {"id": "b1", "component": "shape-picture", '
+        '"settings": {"subject": "house", "title": "English Adventure", "labels": ["Welcome"]}};\n'
+    )
+
+    rewrite_lesson_page(
+        str(path),
+        [{"id": "b1", "text": "Welcome.", "component": "shape-picture", "layout": {"pieces": {"title": {"x": -12, "y": 0}}}}],
+    )
+
+    saved = json.loads((tmp_path / "lesson.json").read_text())
+    assert saved["beats"][0]["settings"]["title"] == "English Adventure"
+    assert saved["beats"][0]["layout"] == {"pieces": {"title": {"x": -12, "y": 0}}}
 
 
 def test_lesson_page_reveals_a_word_when_it_is_spoken(tmp_path):
