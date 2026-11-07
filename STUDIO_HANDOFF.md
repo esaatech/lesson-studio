@@ -63,6 +63,8 @@ When a lesson is posted, the teacher adds a pause at a checkpoint line. The reco
 
 Teachers can drag the title, a label, or the drawing on the lesson page. Each piece is stored on the beat as `layout.pieces[id] = {x, y}` in percents of the stage, written back into `index.html` / `lesson.json`, and used by Play and the MP4. Do not drop that on export.
 
+Teachers can delete a line from the ⋯ menu. `DELETE /v1/lessons/{id}/beats/{beat_id}` removes it, retimes the rest, and rewrites the lesson page. A lesson must keep at least one line. Do not allow delete while rendering or exporting.
+
 Also later, and not started: adding the downloaded MP4 to the course.
 
 ## Cloud
@@ -98,6 +100,7 @@ This service still drafts beats and pictures. Django Admin owns the two system p
 - A saved Admin model wins over Django `.env`. This service's `.env` is the fallback until Admin calls `PUT /v1/settings`.
 - Django needs `LESSON_STUDIO_URL` and `LESSON_STUDIO_SETTINGS_TOKEN` (academy `env.example`). This service needs the same value in `SETTINGS_TOKEN` (`.env.example`).
 - Cloud Run: set env vars on the service. Django: `LESSON_STUDIO_URL` and `LESSON_STUDIO_SETTINGS_TOKEN`. This service: `SETTINGS_TOKEN` with the same value. Use `--update-env-vars`. See academy `ai_service/docs/AI_PLATFORM.md`.
+- Admin → **Studio Visual Playgrounds** tests one beat through `POST /v1/visuals` with the selected prompt. That call does not push a new default. HTML is returned so staff can play the drawing. `generate_audio` is off unless they check it.
 
 ## Help Center
 

@@ -165,6 +165,32 @@ def update_beat_layout(
     return saved
 
 
+@router.delete("/v1/lessons/{lesson_id}/beats/{beat_id}", response_model=LessonRecord)
+def delete_beat(
+    lesson_id: uuid.UUID,
+    beat_id: str,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> LessonRecord | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    if lesson is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    if lesson.status == "rendering":
+        return JSONResponse(status_code=409, content={"error": "The lesson is being made. Wait until it finishes to delete a line."})
+    if lesson.status == "exporting":
+        return JSONResponse(status_code=409, content={"error": "The video is being made. Wait until it finishes to delete a line."})
+    if not any(str(beat.get("id")) == beat_id for beat in lesson.beats):
+        return JSONResponse(status_code=404, content={"error": "Line not found"})
+    if len(lesson.beats) <= 1:
+        return JSONResponse(status_code=409, content={"error": "A lesson needs at least one line."})
+    saved = store.delete_beat(lesson_id, beat_id)
+    if saved is None:
+        return JSONResponse(status_code=404, content={"error": "Line not found"})
+    if saved.html_file.strip():
+        rewrite_lesson_page(saved.html_file, saved.beats)
+    return saved
+
+
 @router.post("/v1/lessons/{lesson_id}/render", response_model=LessonRecord)
 async def render_lesson(
     lesson_id: uuid.UUID,

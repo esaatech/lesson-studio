@@ -12,7 +12,7 @@ os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 from pydantic_ai import Agent
 
 from app.ai_client import AIError, build_model
-from app.runtime_settings import get_store
+from app.runtime_settings import AITaskSettings, get_store
 from app.visuals.components import CHOICE_ADAPTER, VisualChoice, end_state_for
 from app.visuals.cues import cues_for
 from app.visuals.instruction import build_visual_instruction
@@ -53,8 +53,12 @@ def preview_visual(payload: dict, output_dir: Path | None = None) -> ResolvedVis
     return visual
 
 
-async def generate_visual(beat: VisualBeat, output_dir: Path | None = None) -> ResolvedVisual:
-    task = get_store().get().visual_generator
+async def generate_visual(
+    beat: VisualBeat,
+    output_dir: Path | None = None,
+    task: AITaskSettings | None = None,
+) -> ResolvedVisual:
+    task = task or get_store().get().visual_generator
     try:
         model = build_model(task)
     except AIError:

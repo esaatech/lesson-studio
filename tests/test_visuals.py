@@ -238,7 +238,24 @@ def test_preview_page_plays_the_beat_audio(tmp_path):
     html = Path(page.html_file).read_text()
     assert '"slide_end": 2.368' in html
     assert '"audio_file": "s05-c.mp3"' in html
+    assert "play.hidden" not in html
+    assert 'id="play"' in html
     assert (tmp_path / "visuals" / "s05-c.mp3").is_file()
+    from app.visuals.render_html import html_with_inline_audio
+    from app.visuals.schema import ResolvedVisual
+
+    inlined = html_with_inline_audio(
+        Path(page.html_file),
+        ResolvedVisual(
+            id="s05-c",
+            component="digit-slide",
+            settings={},
+            end_state={},
+            html_file=page.html_file,
+            audio_file="s05-c.mp3",
+        ),
+    )
+    assert "data:audio/mpeg;base64," in inlined
 
 
 def test_missing_provider_key_is_a_message(monkeypatch):
@@ -259,6 +276,55 @@ def test_missing_provider_key_is_a_message(monkeypatch):
 
     assert response.status_code == 400
     assert response.json() == {"error": "GEMINI_API_KEY is not set"}
+
+
+def test_visual_run_returns_html_and_uses_the_requested_prompt(monkeypatch, tmp_path):
+    from app.runtime_settings import AITaskSettings
+    from app.visuals.generate import resolve_choice
+    from app.visuals.render_html import write_visual_page
+    from app.visuals.schema import VisualBeat
+
+    seen = {}
+
+    async def fake_generate(beat, output_dir=None, task=None):
+        seen["task"] = task
+        seen["text"] = beat.text
+        choice = CHOICE_ADAPTER.validate_python(
+            {
+                "component": "shape-picture",
+                "settings": {"subject": "person", "title": "English Adventure", "labels": ["Welcome", "Explorers"]},
+            }
+        )
+        visual = resolve_choice(beat, choice)
+        page = write_visual_page(visual, tmp_path)
+        visual.html_file = str(page)
+        return visual
+
+    monkeypatch.setattr("app.routes.generate_visual", fake_generate)
+    client = TestClient(app)
+    prompt = {
+        "provider": "gemini",
+        "model_id": "gemini-3.5-flash-lite",
+        "temperature": 0.2,
+        "system_prompt": "Choose a drawing. A person outline is allowed.",
+    }
+    response = client.post(
+        "/v1/visuals",
+        json={
+            "id": "p1",
+            "text": "Welcome, explorers, to our English Adventure where words come alive!",
+            "visual": "A person outline titled English Adventure, labeled Welcome and Explorers.",
+            "visual_generator": prompt,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["component"] == "shape-picture"
+    assert body["settings"]["subject"] == "person"
+    assert "English Adventure" in body["html"]
+    assert "<div class=\"stage\"" in body["html"] or "id=\"stage\"" in body["html"]
+    assert seen["task"] == AITaskSettings.model_validate(prompt)
+    assert "Welcome" in seen["text"]
 
 
 def test_drawn_pictures_are_offered_to_the_model():

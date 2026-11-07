@@ -1,5 +1,6 @@
 """A single beat page. Audio time drives the frame, and the frame comes only from that time."""
 
+import base64
 import json
 import shutil
 from pathlib import Path
@@ -65,10 +66,12 @@ _PAGE = """<!DOCTYPE html>
     const play = document.getElementById("play");
     const duration = plan.duration || 1;
     let scrubbing = false;
+    let clock = 0;
+    let playing = false;
+    let lastTick = null;
     document.getElementById("title").textContent = plan.id + " · " + plan.component;
     slider.max = String(duration);
     if (plan.audio_file) audio.src = plan.audio_file;
-    else play.hidden = true;
 
     function phase(t) {{
       const cues = plan.cues || {{}};
@@ -79,35 +82,53 @@ _PAGE = """<!DOCTYPE html>
     }}
 
     function frame(t) {{
-      const value = Math.min(duration, Math.max(0, t));
-      renderers[plan.component](plan.settings, value, plan);
+      clock = Math.min(duration, Math.max(0, t));
+      renderers[plan.component](plan.settings, clock, plan);
       placeStage();
-      const label = value.toFixed(2) + "s / " + duration.toFixed(2) + "s";
-      const name = phase(value);
+      const label = clock.toFixed(2) + "s / " + duration.toFixed(2) + "s";
+      const name = phase(clock);
       readout.textContent = name ? label + " · " + name : label;
-      slider.value = String(value);
+      slider.value = String(clock);
+    }}
+
+    function setPlaying(on) {{
+      playing = on;
+      play.textContent = playing ? "Pause" : "Play";
+      lastTick = null;
     }}
 
     play.addEventListener("click", () => {{
-      if (!audio.src) return;
-      if (audio.paused) audio.play();
-      else audio.pause();
+      if (audio.src) {{
+        if (audio.paused) audio.play();
+        else audio.pause();
+        return;
+      }}
+      if (clock >= duration - 0.02) frame(0);
+      setPlaying(!playing);
     }});
-    audio.addEventListener("play", () => {{ play.textContent = "Pause"; }});
-    audio.addEventListener("pause", () => {{ play.textContent = "Play"; }});
-    audio.addEventListener("ended", () => frame(duration));
+    audio.addEventListener("play", () => setPlaying(true));
+    audio.addEventListener("pause", () => setPlaying(false));
+    audio.addEventListener("ended", () => {{ setPlaying(false); frame(duration); }});
     slider.addEventListener("pointerdown", () => {{ scrubbing = true; }});
-    slider.addEventListener("pointerup", () => {{ scrubbing = false; }});
+    slider.addEventListener("pointerup", () => {{ scrubbing = false; lastTick = null; }});
     slider.addEventListener("input", () => {{
       const t = Number(slider.value);
       if (audio.src) audio.currentTime = Math.min(t, audio.duration || t);
       frame(t);
     }});
-    function tick() {{
-      if (audio.src && !audio.paused && !scrubbing) frame(audio.currentTime);
+    function tick(now) {{
+      if (playing && !scrubbing && !audio.src) {{
+        if (lastTick == null) lastTick = now;
+        clock = Math.min(duration, clock + (now - lastTick) / 1000);
+        lastTick = now;
+        frame(clock);
+        if (clock >= duration) setPlaying(false);
+      }} else if (audio.src && !audio.paused && !scrubbing) {{
+        frame(audio.currentTime);
+      }}
       requestAnimationFrame(tick);
     }}
-    tick();
+    requestAnimationFrame(tick);
     frame(0);
   </script>
 </body>
@@ -123,6 +144,17 @@ def write_visual_page(visual: ResolvedVisual, directory: Path) -> Path:
     path = directory / f"{visual.id}.html"
     path.write_text(html)
     return path
+
+
+def html_with_inline_audio(path: Path, visual: ResolvedVisual) -> str:
+    html = path.read_text()
+    if not visual.audio_file:
+        return html
+    audio_path = path.parent / visual.audio_file
+    if not audio_path.is_file():
+        return html
+    data = "data:audio/mpeg;base64," + base64.b64encode(audio_path.read_bytes()).decode("ascii")
+    return html.replace(json.dumps(visual.audio_file), json.dumps(data))
 
 
 def _copy_audio(visual: ResolvedVisual, directory: Path) -> None:

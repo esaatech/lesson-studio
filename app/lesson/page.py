@@ -348,10 +348,10 @@ def rewrite_lesson_page(html_file: str, beats: list[dict] | None = None) -> None
     merged = [_merge_saved_beat(directory, existing.get(str(beat.get("id"))), beat) for beat in source]
     if not merged:
         return
-    total = float(record.get("total_duration") or 0)
+    total = 0.0
     for beat in merged:
         total = max(total, float(beat.get("end") or 0) + float(beat.get("pause_after") or 0))
-    write_lesson_page(directory.name, merged, total, directory)
+    write_lesson_page(directory.name, merged, total or float(record.get("total_duration") or 0), directory)
 
 
 def _merge_saved_beat(directory: Path, previous: dict | None, incoming: dict) -> dict:

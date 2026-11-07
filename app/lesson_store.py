@@ -47,6 +47,20 @@ def layout_with_piece(beat: dict[str, Any], piece: str, x: float, y: float) -> d
     return {**beat, "layout": layout}
 
 
+def retime_beats(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    cursor = 0.0
+    placed: list[dict[str, Any]] = []
+    for beat in beats:
+        duration = float(beat.get("duration") or 0)
+        if duration <= 0:
+            duration = max(0.0, float(beat.get("end") or 0) - float(beat.get("start") or 0))
+        start = round(cursor, 3)
+        end = round(start + duration, 3)
+        placed.append({**beat, "start": start, "end": end, "pause_after": 0.0, "duration": duration})
+        cursor = end
+    return placed
+
+
 def copy_layout(layout: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(layout, dict):
         return {}
@@ -80,6 +94,8 @@ class LessonStore(Protocol):
     def update_beat_layout(
         self, lesson_id: uuid.UUID, beat_id: str, piece: str, x: float, y: float
     ) -> LessonRecord | None: ...
+
+    def delete_beat(self, lesson_id: uuid.UUID, beat_id: str) -> LessonRecord | None: ...
 
     def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None: ...
 
@@ -182,6 +198,20 @@ class SqlLessonStore:
         if not found:
             return None
         row.beats = beats
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return LessonRecord.model_validate(row)
+
+    def delete_beat(self, lesson_id: uuid.UUID, beat_id: str) -> LessonRecord | None:
+        row = self._session.get(StudioLesson, lesson_id)
+        if row is None:
+            return None
+        remaining = [beat for beat in list(row.beats or []) if str(beat.get("id")) != beat_id]
+        if len(remaining) == len(list(row.beats or [])):
+            return None
+        if not remaining:
+            return None
+        row.beats = retime_beats(remaining)
         row.updated_at = datetime.now(timezone.utc)
         self._session.flush()
         return LessonRecord.model_validate(row)

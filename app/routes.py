@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
@@ -8,7 +10,8 @@ from app.runtime_settings import RuntimeSettings, SettingsPatch, get_store, toke
 from app.schemas import LessonAudioRequest, LessonAudioResponse
 from app.service import render_lesson_audio
 from app.visuals.generate import generate_visual
-from app.visuals.schema import ResolvedVisual, VisualBeat
+from app.visuals.render_html import html_with_inline_audio
+from app.visuals.schema import VisualBeat, VisualRunRequest, VisualRunResponse
 
 router = APIRouter()
 
@@ -35,10 +38,29 @@ async def create_audio_timings(body: LessonAudioRequest) -> LessonAudioResponse:
         return JSONResponse(status_code=public_error_status(exc.status_code), content=content)
 
 
-@router.post("/v1/visuals", response_model=ResolvedVisual)
-async def create_visual(body: VisualBeat) -> ResolvedVisual | JSONResponse:
+@router.post("/v1/visuals", response_model=VisualRunResponse)
+async def create_visual(body: VisualRunRequest) -> VisualRunResponse | JSONResponse:
     try:
-        return await generate_visual(body)
+        beat = VisualBeat.model_validate(body.model_dump(exclude={"generate_audio", "visual_generator"}))
+        if body.generate_audio:
+            audio = await render_lesson_audio(LessonAudioRequest(beats=[{"id": beat.id, "text": beat.text}]))
+            item = audio.beats[0]
+            beat.duration = item.duration
+            beat.words = item.words
+            beat.audio_file = str(Path(audio.output_dir) / item.audio_file)
+        visual = await generate_visual(beat, task=body.visual_generator)
+        page = Path(visual.html_file)
+        return VisualRunResponse(
+            **visual.model_dump(),
+            html=html_with_inline_audio(page, visual) if page.is_file() else "",
+        )
+    except ElevenLabsError as exc:
+        content: dict[str, str | int] = {"error": exc.message}
+        if exc.beat_id:
+            content["beat_id"] = exc.beat_id
+        if exc.upstream:
+            content["upstream_status"] = exc.status_code
+        return JSONResponse(status_code=public_error_status(exc.status_code), content=content)
     except AIError as exc:
         status_code = 400 if exc.message.endswith("is not set") else 502
         return JSONResponse(status_code=status_code, content={"error": exc.message})

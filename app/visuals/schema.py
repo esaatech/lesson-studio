@@ -2,6 +2,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.runtime_settings import AITaskSettings
+
 
 class WordTime(BaseModel):
     word: str
@@ -31,3 +33,12 @@ class ResolvedVisual(BaseModel):
     audio_file: str = ""
     checkpoint: bool = False
     html_file: str
+
+
+class VisualRunRequest(VisualBeat):
+    generate_audio: bool = False
+    visual_generator: AITaskSettings | None = None
+
+
+class VisualRunResponse(ResolvedVisual):
+    html: str = ""

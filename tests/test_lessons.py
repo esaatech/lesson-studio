@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.lesson_routes import get_lesson_store, require_owner
-from app.lesson_store import LessonRecord, copy_layout, layout_with_piece
+from app.lesson_store import LessonRecord, copy_layout, layout_with_piece, retime_beats
 from app.main import app
 from app.models import StudioLesson
 
@@ -83,6 +83,15 @@ class MemoryLessonStore:
             return None
         return self._replace(lesson_id, beats=beats)
 
+    def delete_beat(self, lesson_id: uuid.UUID, beat_id: str) -> LessonRecord | None:
+        current = self.get(lesson_id)
+        if current is None:
+            return None
+        remaining = [beat for beat in current.beats if str(beat.get("id")) != beat_id]
+        if len(remaining) == len(current.beats) or not remaining:
+            return None
+        return self._replace(lesson_id, beats=retime_beats(remaining))
+
     def mark_status(self, lesson_id: uuid.UUID, status: str) -> LessonRecord | None:
         return self._replace(lesson_id, status=status)
 
@@ -128,6 +137,9 @@ def test_moving_one_piece_keeps_the_others():
     }
     assert copy_layout(both["layout"]) == both["layout"]
     assert copy_layout({"x": -12, "y": 0}) == {}
+    assert retime_beats([
+        {"id": "b2", "start": 1.2, "end": 3.0, "duration": 1.8},
+    ]) == [{"id": "b2", "start": 0.0, "end": 1.8, "pause_after": 0.0, "duration": 1.8}]
 
 
 def test_lesson_is_saved_for_the_token_owner():
@@ -232,6 +244,60 @@ def test_owner_can_save_where_the_picture_was_dragged(tmp_path, monkeypatch):
         assert rewritten["beats"][0]["layout"] == {
             "pieces": {"title": {"x": -20.0, "y": 0.0}, "label-0": {"x": 8.0, "y": 4.0}}
         }
+    finally:
+        get_settings.cache_clear()
+        app.dependency_overrides.clear()
+
+
+def test_owner_can_delete_one_line(tmp_path, monkeypatch):
+    from app.config import get_settings
+    from app.lesson.page import write_lesson_page
+
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    store = MemoryLessonStore()
+    app.dependency_overrides[require_owner] = lambda: "teacher-a"
+    app.dependency_overrides[get_lesson_store] = lambda: store
+    client = TestClient(app)
+    try:
+        beats = [
+            {
+                "id": "b1",
+                "text": "Welcome.",
+                "visual": "A welcome badge.",
+                "start": 0,
+                "end": 1.2,
+                "duration": 1.2,
+                "pause_after": 0,
+            },
+            {
+                "id": "b2",
+                "text": "What does collect mean?",
+                "visual": "A question.",
+                "start": 1.2,
+                "end": 3.0,
+                "duration": 1.8,
+                "pause_after": 0,
+            },
+        ]
+        lesson = store.create("teacher-a", "English", beats, status="rendered")
+        page = write_lesson_page(str(lesson.id), beats, 3.0, tmp_path / "lessons" / str(lesson.id))
+        store.save_render(lesson.id, beats, str(page.parent), str(page))
+        refused = client.delete(f"/v1/lessons/{lesson.id}/beats/missing")
+        assert refused.status_code == 404
+        saved = client.delete(f"/v1/lessons/{lesson.id}/beats/b1")
+        assert saved.status_code == 200
+        assert [beat["id"] for beat in saved.json()["beats"]] == ["b2"]
+        assert saved.json()["beats"][0]["start"] == 0.0
+        assert saved.json()["beats"][0]["end"] == 1.8
+        leftover = client.delete(f"/v1/lessons/{lesson.id}/beats/b2")
+        assert leftover.status_code == 409
+        assert leftover.json() == {"error": "A lesson needs at least one line."}
+        rewritten = json.loads((tmp_path / "lessons" / str(lesson.id) / "lesson.json").read_text())
+        assert [beat["id"] for beat in rewritten["beats"]] == ["b2"]
+        assert rewritten["total_duration"] == 1.8
+        assert "What does collect mean?" in (tmp_path / "lessons" / str(lesson.id) / "index.html").read_text()
+        assert "Welcome." not in (tmp_path / "lessons" / str(lesson.id) / "index.html").read_text()
     finally:
         get_settings.cache_clear()
         app.dependency_overrides.clear()
