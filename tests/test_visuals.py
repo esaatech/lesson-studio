@@ -330,9 +330,27 @@ def test_visual_run_returns_html_and_uses_the_requested_prompt(monkeypatch, tmp_
 def test_drawn_pictures_are_offered_to_the_model():
     instruction = build_visual_instruction(VISUAL_GENERATOR_PROMPT)
 
-    for name in ("stroke-diagram", "shape-picture", "arrow-link", "before-after", "code-line", "measure"):
+    for name in ("stroke-diagram", "shape-picture", "arrow-link", "before-after", "code-line", "measure", "title-card", "kinetic-text"):
         assert name in instruction
-    assert "Prefer a drawn picture" in instruction
+    assert "intro uses title-card" in instruction
+
+
+def test_catalog_for_a_kind_hides_the_other_tools():
+    from app.visuals.components import component_catalog
+
+    intro = component_catalog("intro")
+    wording = component_catalog("wording")
+    concept = component_catalog("concept")
+
+    assert intro.startswith("This beat kind is intro.")
+    assert "- title-card" in intro
+    assert "- shape-picture" not in intro
+    assert "- kinetic-text" in wording
+    assert "- title-card" not in wording
+    assert "- shape-picture" not in wording
+    assert "- shape-picture" in concept
+    assert "- kinetic-text" not in concept
+    assert "- title-card" not in concept
 
 
 def test_a_drawn_picture_follows_the_spoken_words():
@@ -384,6 +402,26 @@ def test_a_measure_caption_waits_until_it_is_spoken():
     assert cues["reveal_0"] == 0.2
     assert cues["reveal_2"] == 2.2
     assert cues["reveal_3"] == 3.0
+
+
+def test_title_card_and_kinetic_text_follow_spoken_words():
+    from app.visuals.cues import cues_for
+    from app.visuals.schema import WordTime
+
+    words = [
+        WordTime(word="Welcome", start=0.1, end=0.4),
+        WordTime(word="to", start=0.4, end=0.5),
+        WordTime(word="English.", start=0.6, end=1.0),
+    ]
+    title = cues_for("title-card", {"title": "English", "subtitle": "", "emblem": "book"}, words, 2.0)
+    assert title["reveal_0"] == 0.6
+    kinetic = cues_for("kinetic-text", {"sentence": "Welcome to English", "motion": "highlight"}, words, 2.0)
+    assert kinetic["reveal_0"] == 0.1
+    assert kinetic["reveal_2"] == 0.6
+    choice = CHOICE_ADAPTER.validate_python(
+        {"component": "title-card", "settings": {"title": "English", "subtitle": "", "emblem": "book"}}
+    )
+    assert end_state_for(choice)["title"] == "English"
 
 
 def test_unknown_component_is_rejected():

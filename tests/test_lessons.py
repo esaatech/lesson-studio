@@ -45,7 +45,7 @@ class MemoryLessonStore:
         return self._replace(lesson_id, beats=beats)
 
     def update_beat(
-        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
+        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, kind: str, checkpoint: bool
     ) -> LessonRecord | None:
         current = self.get(lesson_id)
         if current is None:
@@ -57,7 +57,7 @@ class MemoryLessonStore:
                 beats.append(beat)
                 continue
             found = True
-            updated = {**beat, "text": text, "visual": visual, "checkpoint": checkpoint}
+            updated = {**beat, "text": text, "visual": visual, "kind": kind, "checkpoint": checkpoint}
             updated.pop("component", None)
             updated.pop("settings", None)
             beats.append(updated)
@@ -189,12 +189,13 @@ def test_owner_can_edit_one_line():
         lesson_id = created.json()["id"]
         saved = client.patch(
             f"/v1/lessons/{lesson_id}/beats/line-1",
-            json={"text": "Styled text.", "visual": "A blue heading.", "checkpoint": True},
+            json={"text": "Styled text.", "visual": "A blue heading.", "kind": "wording", "checkpoint": True},
         )
         assert saved.status_code == 200
         beat = saved.json()["beats"][0]
         assert beat["text"] == "Styled text."
         assert beat["visual"] == "A blue heading."
+        assert beat["kind"] == "wording"
         assert beat["checkpoint"] is True
         assert "component" not in beat
     finally:

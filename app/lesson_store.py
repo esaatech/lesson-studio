@@ -88,7 +88,7 @@ class LessonStore(Protocol):
     def save_beats(self, lesson_id: uuid.UUID, beats: list[dict[str, Any]]) -> LessonRecord | None: ...
 
     def update_beat(
-        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
+        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, kind: str, checkpoint: bool
     ) -> LessonRecord | None: ...
 
     def update_beat_layout(
@@ -158,7 +158,7 @@ class SqlLessonStore:
         return LessonRecord.model_validate(row)
 
     def update_beat(
-        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, checkpoint: bool
+        self, lesson_id: uuid.UUID, beat_id: str, text: str, visual: str, kind: str, checkpoint: bool
     ) -> LessonRecord | None:
         row = self._session.get(StudioLesson, lesson_id)
         if row is None:
@@ -170,7 +170,7 @@ class SqlLessonStore:
                 beats.append(beat)
                 continue
             found = True
-            updated = {**beat, "text": text, "visual": visual, "checkpoint": checkpoint}
+            updated = {**beat, "text": text, "visual": visual, "kind": kind, "checkpoint": checkpoint}
             updated.pop("component", None)
             updated.pop("settings", None)
             beats.append(updated)

@@ -2,6 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.beat_kind import BeatKind
 from app.runtime_settings import AITaskSettings
 
 
@@ -15,6 +16,7 @@ class VisualBeat(BaseModel):
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     text: str = Field(min_length=1, max_length=2000)
     visual: str = Field(min_length=1, max_length=2000)
+    kind: BeatKind | None = None
     checkpoint: bool = False
     duration: float | None = Field(default=None, ge=0)
     previous_end_state: dict[str, Any] | None = None

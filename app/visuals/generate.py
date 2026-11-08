@@ -13,7 +13,7 @@ from pydantic_ai import Agent
 
 from app.ai_client import AIError, build_model
 from app.runtime_settings import AITaskSettings, get_store
-from app.visuals.components import CHOICE_ADAPTER, VisualChoice, end_state_for
+from app.visuals.components import CHOICE_ADAPTER, VisualChoice, choice_type_for, end_state_for
 from app.visuals.cues import cues_for
 from app.visuals.instruction import build_visual_instruction
 from app.visuals.render_html import write_visual_page
@@ -65,8 +65,8 @@ async def generate_visual(
         raise
     agent = Agent(
         model,
-        output_type=VisualChoice,
-        instructions=build_visual_instruction(task.system_prompt),
+        output_type=choice_type_for(beat.kind),
+        instructions=build_visual_instruction(task.system_prompt, beat.kind),
         retries={"output": 2},
         model_settings={"temperature": task.temperature},
     )
@@ -128,7 +128,8 @@ def _visual_error(beat: VisualBeat, exc: BaseException) -> str:
 
 
 def _user_prompt(beat: VisualBeat) -> str:
+    kind = beat.kind or "unknown"
     return (
-        "Choose a component for this beat.\n"
+        f"Choose a component for this beat. The beat kind is {kind}.\n"
         f"{beat.model_dump_json(indent=2)}"
     )

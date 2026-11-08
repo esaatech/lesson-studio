@@ -167,6 +167,18 @@ def cues_for(component: str, settings: dict, words: list[WordTime], duration: fl
     length = duration if duration is not None else (words[-1].end if words else 1.0)
     if component == "digit-slide":
         return digit_slide_cues(str(settings.get("to_column", "")), words, length)
+    if component == "title-card":
+        phrases = [str(settings.get("title") or "")]
+        subtitle = str(settings.get("subtitle") or "").strip()
+        emblem = str(settings.get("emblem") or "none").strip()
+        if subtitle:
+            phrases.append(subtitle)
+        if emblem and emblem != "none":
+            phrases.append(emblem)
+        return _reveal_cues(phrases, words, length)
+    if component == "kinetic-text":
+        sentence = str(settings.get("sentence") or "")
+        return _reveal_cues(_content_tokens(sentence), words, length)
     if component == "highlight-words":
         return _reveal_cues([str(item) for item in settings.get("emphasis") or []], words, length)
     if component == "label-callout":

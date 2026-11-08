@@ -9,7 +9,13 @@ from app.lesson_routes import get_lesson_store, require_owner
 from app.main import app
 from tests.test_lessons import MemoryLessonStore
 
-BEAT = {"id": "b1", "text": "Five sits in the ones place.", "visual": "Digit 5 in the ones column.", "checkpoint": False}
+BEAT = {
+    "id": "b1",
+    "text": "Five sits in the ones place.",
+    "kind": "wording",
+    "visual": "Digit 5 in the ones column.",
+    "checkpoint": False,
+}
 
 
 @pytest.fixture
@@ -120,7 +126,7 @@ def test_a_script_may_have_one_hundred_short_lines():
     from app.script_draft import DraftScript
 
     beats = [
-        {"id": f"b{i}", "text": f"Line {i} is one breath.", "visual": "One picture.", "checkpoint": False}
+        {"id": f"b{i}", "text": f"Line {i} is one breath.", "kind": "concept", "visual": "One picture.", "checkpoint": False}
         for i in range(1, 101)
     ]
     script = DraftScript(beats=beats)
@@ -139,7 +145,30 @@ def test_one_line_cannot_pack_a_paragraph():
     from app.script_draft import DraftBeat
 
     try:
-        DraftBeat(id="b1", text="x" * 221, visual="One picture.")
+        DraftBeat(id="b1", text="x" * 221, kind="concept", visual="One picture.")
     except ValidationError:
         return
     raise AssertionError("expected a 221 character line to be rejected")
+
+
+def test_intro_may_only_be_the_first_line():
+    from pydantic import ValidationError
+
+    from app.script_draft import DraftScript
+
+    DraftScript(
+        beats=[
+            {"id": "b1", "text": "Welcome to English.", "kind": "intro", "visual": "Title English."},
+            {"id": "b2", "text": "A verb names an action.", "kind": "concept", "visual": "An action arrow."},
+        ]
+    )
+    try:
+        DraftScript(
+            beats=[
+                {"id": "b1", "text": "A verb names an action.", "kind": "concept", "visual": "An action arrow."},
+                {"id": "b2", "text": "Welcome to English.", "kind": "intro", "visual": "Title English."},
+            ]
+        )
+    except ValidationError:
+        return
+    raise AssertionError("expected intro after the first line to be rejected")

@@ -3,6 +3,7 @@
 import re
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import FileResponse, JSONResponse
@@ -104,6 +105,7 @@ def list_lessons(
 class BeatUpdate(BaseModel):
     text: str
     visual: str = ""
+    kind: Literal["intro", "wording", "concept"] = "concept"
     checkpoint: bool = False
 
     @field_validator("text")
@@ -130,7 +132,7 @@ def update_beat(
         return JSONResponse(status_code=409, content={"error": "The lesson is being made. Wait until it finishes to edit a line."})
     if lesson.status == "exporting":
         return JSONResponse(status_code=409, content={"error": "The video is being made. Wait until it finishes to edit a line."})
-    saved = store.update_beat(lesson_id, beat_id, body.text, body.visual.strip(), body.checkpoint)
+    saved = store.update_beat(lesson_id, beat_id, body.text, body.visual.strip(), body.kind, body.checkpoint)
     if saved is None:
         return JSONResponse(status_code=404, content={"error": "Line not found"})
     return saved

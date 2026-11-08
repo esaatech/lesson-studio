@@ -78,6 +78,22 @@ class MeasureSettings(BaseModel):
     caption: str = Field(default="", max_length=80, description="Sentence shown when the measure is complete. Empty if the title is enough.")
 
 
+class TitleCardSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="The lesson name, a few words, shown large")
+    subtitle: str = Field(default="", max_length=80, description="Optional second line. Empty if the title is enough.")
+    emblem: Literal["none", "clock", "book", "sun", "star", "person", "tree", "house"] = Field(
+        default="none",
+        description="Optional simple drawing under the title: none, clock, book, sun, star, person, tree, or house",
+    )
+
+
+class KineticTextSettings(BaseModel):
+    sentence: str = Field(min_length=1, max_length=400, description="The words students should see, taken from the spoken line")
+    motion: Literal["highlight", "reveal"] = Field(
+        description="highlight lights spoken words in a visible sentence. reveal brings each word in as it is said.",
+    )
+
+
 class DigitSlideChoice(BaseModel):
     component: Literal["digit-slide"]
     settings: DigitSlideSettings
@@ -128,8 +144,38 @@ class MeasureChoice(BaseModel):
     settings: MeasureSettings
 
 
+class TitleCardChoice(BaseModel):
+    component: Literal["title-card"]
+    settings: TitleCardSettings
+
+
+class KineticTextChoice(BaseModel):
+    component: Literal["kinetic-text"]
+    settings: KineticTextSettings
+
+
+IntroChoice = TitleCardChoice
+
+WordingChoice = Annotated[
+    KineticTextChoice | HighlightWordsChoice | DigitSlideChoice | CodeLineChoice,
+    Field(discriminator="component"),
+]
+
+ConceptChoice = Annotated[
+    LabelCalloutChoice
+    | PathTraceChoice
+    | StrokeDiagramChoice
+    | ShapePictureChoice
+    | ArrowLinkChoice
+    | BeforeAfterChoice
+    | MeasureChoice,
+    Field(discriminator="component"),
+]
+
 VisualChoice = Annotated[
-    DigitSlideChoice
+    TitleCardChoice
+    | KineticTextChoice
+    | DigitSlideChoice
     | HighlightWordsChoice
     | LabelCalloutChoice
     | PathTraceChoice
@@ -145,6 +191,8 @@ VisualChoice = Annotated[
 CHOICE_ADAPTER = TypeAdapter(VisualChoice)
 
 SETTING_MODELS = {
+    "title-card": TitleCardSettings,
+    "kinetic-text": KineticTextSettings,
     "digit-slide": DigitSlideSettings,
     "highlight-words": HighlightWordsSettings,
     "label-callout": LabelCalloutSettings,
@@ -158,25 +206,60 @@ SETTING_MODELS = {
 }
 
 USE_WHEN = {
-    "digit-slide": "Only when one digit moves between place-value columns.",
-    "highlight-words": "Only when the point of the beat is the wording of one sentence.",
-    "label-callout": "A short list of named parts, with no drawn object.",
-    "path-trace": "Steps along a single line.",
-    "stroke-diagram": "A few shapes that draw themselves while they are named.",
-    "shape-picture": "A concrete object the student should see, with labels.",
-    "arrow-link": "Two things and the relationship between them.",
-    "before-after": "A change from one state to another.",
-    "code-line": "One line of code, with the important tokens marked.",
-    "measure": "A number line or a bar that fills as quantities are spoken.",
+    "title-card": "Intro only. Name the lesson. Large title, optional subtitle, optional one emblem. Not an explanation.",
+    "kinetic-text": "Wording. The spoken language is what students see, highlighted or revealed as it is said.",
+    "digit-slide": "Wording. Only when one digit moves between place-value columns.",
+    "highlight-words": "Wording. Only when the point of the beat is the wording of one sentence.",
+    "label-callout": "Concept. A short list of named parts, with no drawn object.",
+    "path-trace": "Concept. Steps along a single line.",
+    "stroke-diagram": "Concept. A few shapes that draw themselves while they are named.",
+    "shape-picture": "Concept. A concrete object the student should see, with labels.",
+    "arrow-link": "Concept. Two things and the relationship between them.",
+    "before-after": "Concept. A change from one state to another.",
+    "code-line": "Wording. One line of code, with the important tokens marked.",
+    "measure": "Concept. A number line or a bar that fills as quantities are spoken.",
+}
+
+COMPONENTS_FOR_KIND = {
+    "intro": ("title-card",),
+    "wording": ("kinetic-text", "highlight-words", "digit-slide", "code-line"),
+    "concept": (
+        "label-callout",
+        "path-trace",
+        "stroke-diagram",
+        "shape-picture",
+        "arrow-link",
+        "before-after",
+        "measure",
+    ),
+}
+
+CHOICE_TYPE_FOR_KIND = {
+    "intro": IntroChoice,
+    "wording": WordingChoice,
+    "concept": ConceptChoice,
 }
 
 
-def component_catalog() -> str:
+def choice_type_for(kind: str | None):
+    """The pydantic output type the visual model may return for this beat kind."""
+    if kind in CHOICE_TYPE_FOR_KIND:
+        return CHOICE_TYPE_FOR_KIND[kind]
+    return VisualChoice
+
+
+def component_catalog(kind: str | None = None) -> str:
     """The component list appended to the system instruction at call time."""
-    lines = [
-        "Allowed components. Prefer a drawn picture when the beat explains an object, a relationship, a change, code, or a quantity.",
-    ]
-    for name, model in SETTING_MODELS.items():
+    if kind in COMPONENTS_FOR_KIND:
+        names = COMPONENTS_FOR_KIND[kind]
+        lines = [f"This beat kind is {kind}. Choose only from these components."]
+    else:
+        names = tuple(SETTING_MODELS)
+        lines = [
+            "Allowed components. Match the beat kind: intro uses title-card, wording uses kinetic text, concept uses a drawing of the idea."
+        ]
+    for name in names:
+        model = SETTING_MODELS[name]
         fields = []
         for field_name, field in model.model_fields.items():
             description = field.description or field_name
@@ -188,6 +271,19 @@ def component_catalog() -> str:
 def end_state_for(choice: VisualChoice) -> dict:
     """What is on screen at p = 1. The next beat can start from this."""
     settings = choice.settings
+    if isinstance(choice, TitleCardChoice):
+        return {
+            "component": "title-card",
+            "title": settings.title,
+            "subtitle": settings.subtitle,
+            "emblem": settings.emblem,
+        }
+    if isinstance(choice, KineticTextChoice):
+        return {
+            "component": "kinetic-text",
+            "sentence": settings.sentence,
+            "motion": settings.motion,
+        }
     if isinstance(choice, DigitSlideChoice):
         return {
             "component": "digit-slide",

@@ -47,6 +47,13 @@ STAGE_CSS = """
     .bar-fill { height: 36px; background: #2f6f4e; }
     .bar-labels { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 20px; }
     .caption { font-size: 26px; line-height: 1.3; margin: 22px 0 0; }
+    .title-card { width: 100%; text-align: center; }
+    .title-card .headline { margin: 0; font-size: 64px; font-weight: 700; line-height: 1.15; }
+    .title-card .subhead { margin: 18px 0 0; font-size: 28px; line-height: 1.3; color: #5c564c; }
+    .title-card .emblem { width: 180px; height: auto; display: block; margin: 28px auto 0; }
+    .kinetic { font-size: 40px; line-height: 1.45; text-align: center; }
+    .kinetic span.on { background: #ffe08a; }
+    .kinetic.reveal span.wait { opacity: 0.18; }
 """
 
 STAGE_SCRIPT = r"""
@@ -80,6 +87,38 @@ STAGE_SCRIPT = r"""
     function strokeAttrs(amount) {
       const offset = (100 * (1 - Math.min(1, Math.max(0, amount)))).toFixed(2);
       return 'fill="none" stroke="#2f6f4e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + offset + '"';
+    }
+
+    function renderTitleCard(settings, t, beat) {
+      const emblem = settings.emblem && settings.emblem !== "none" ? settings.emblem : "";
+      const slots = 1 + (settings.subtitle ? 1 : 0) + (emblem ? 1 : 0);
+      const titleOn = shown(t, beat, 0, slots) ? 1 : 0;
+      const subIndex = settings.subtitle ? 1 : 0;
+      const subOn = settings.subtitle && shown(t, beat, subIndex, slots) ? 1 : 0;
+      const emblemIndex = slots - 1;
+      const emblemAmount = emblem ? span(t, revealTime(beat, emblemIndex, slots), revealTime(beat, emblemIndex, slots) + 0.45) : 0;
+      const path = emblem ? (SHAPE_PATHS[emblem] || SHAPE_PATHS.star) : "";
+      const drawing = emblem ? `<svg class="emblem" data-drag="emblem" viewBox="0 0 200 160"><path d="${path}" ${strokeAttrs(emblemAmount)}/></svg>` : "";
+      const sub = settings.subtitle ? `<p class="subhead" data-drag="subtitle" style="opacity:${subOn}">${escapeHtml(settings.subtitle)}</p>` : "";
+      stage.innerHTML = `<div class="title-card"><h2 class="headline" data-drag="title" style="opacity:${titleOn}">${escapeHtml(settings.title)}</h2>${sub}${drawing}</div>`;
+    }
+
+    function renderKineticText(settings, t, beat) {
+      const tokens = String(settings.sentence || "").split(/(\s+)/);
+      const motion = settings.motion === "reveal" ? "reveal" : "highlight";
+      const words = tokens.filter((token) => bare(token));
+      const count = Math.max(1, words.length);
+      let seen = 0;
+      const html = tokens.map((token) => {
+        if (!bare(token)) return escapeHtml(token);
+        const on = shown(t, beat, seen, count);
+        seen += 1;
+        if (motion === "reveal") {
+          return `<span class="${on ? "on" : "wait"}">${escapeHtml(token)}</span>`;
+        }
+        return on ? `<span class="on">${escapeHtml(token)}</span>` : escapeHtml(token);
+      }).join("");
+      stage.innerHTML = `<div class="kinetic ${motion}" data-drag="sentence">${html}</div>`;
     }
 
     function renderDigitSlide(settings, t, beat) {
@@ -290,6 +329,8 @@ STAGE_SCRIPT = r"""
     }
 
     const renderers = {
+      "title-card": renderTitleCard,
+      "kinetic-text": renderKineticText,
       "digit-slide": renderDigitSlide,
       "highlight-words": renderHighlightWords,
       "label-callout": renderLabelCallout,

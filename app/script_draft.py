@@ -5,6 +5,8 @@ import os
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.beat_kind import BeatKind
+
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
 from pydantic_ai import Agent
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 class DraftBeat(BaseModel):
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     text: str = Field(min_length=1, max_length=220)
+    kind: BeatKind
     visual: str = Field(min_length=1, max_length=2000)
     checkpoint: bool = False
 
@@ -30,6 +33,11 @@ class DraftScript(BaseModel):
         ids = [beat.id for beat in self.beats]
         if len(ids) != len(set(ids)):
             raise ValueError("beat ids must be unique")
+        intro_indexes = [index for index, beat in enumerate(self.beats) if beat.kind == "intro"]
+        if len(intro_indexes) > 1:
+            raise ValueError("a lesson may have only one intro")
+        if intro_indexes and intro_indexes[0] != 0:
+            raise ValueError("intro may only be the first line")
         return self
 
 
