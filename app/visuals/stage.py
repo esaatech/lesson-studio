@@ -96,12 +96,9 @@ STAGE_SCRIPT = r"""
 
     function renderTitleCard(settings, t, beat) {
       const emblem = settings.emblem && settings.emblem !== "none" ? settings.emblem : "";
-      const slots = 1 + (settings.subtitle ? 1 : 0) + (emblem ? 1 : 0);
-      const titleOn = shown(t, beat, 0, slots) ? 1 : 0;
-      const subIndex = settings.subtitle ? 1 : 0;
-      const subOn = settings.subtitle && shown(t, beat, subIndex, slots) ? 1 : 0;
-      const emblemIndex = slots - 1;
-      const emblemAmount = emblem ? span(t, revealTime(beat, emblemIndex, slots), revealTime(beat, emblemIndex, slots) + 0.45) : 0;
+      const titleOn = 1;
+      const subOn = settings.subtitle ? 1 : 0;
+      const emblemAmount = emblem ? span(t, 0, 0.45) : 0;
       const path = emblem ? (SHAPE_PATHS[emblem] || SHAPE_PATHS.star) : "";
       const drawing = emblem ? `<svg class="emblem" data-drag="emblem" viewBox="0 0 200 160"><path d="${path}" ${strokeAttrs(emblemAmount)}/></svg>` : "";
       const sub = settings.subtitle ? `<p class="subhead" data-drag="subtitle" style="opacity:${subOn}">${escapeHtml(settings.subtitle)}</p>` : "";
