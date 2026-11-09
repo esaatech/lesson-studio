@@ -20,7 +20,7 @@ def test_instruction_keeps_the_saved_rules_and_appends_the_catalog():
     assert "progress p" in instruction
     assert "digit-slide" in instruction
     assert "highlight-words" in instruction
-    assert "label-callout" in instruction
+    assert "label-plus-group" in instruction
     assert "path-trace" in instruction
     assert component_catalog() in instruction
 
@@ -330,9 +330,11 @@ def test_visual_run_returns_html_and_uses_the_requested_prompt(monkeypatch, tmp_
 def test_drawn_pictures_are_offered_to_the_model():
     instruction = build_visual_instruction(VISUAL_GENERATOR_PROMPT)
 
-    for name in ("stroke-diagram", "shape-picture", "arrow-link", "before-after", "code-line", "measure", "title-card", "kinetic-text"):
+    for name in ("label-plus-group", "compare-two", "path-trace", "part-whole", "cause-effect", "measure", "process-loop", "title-card", "kinetic-text", "code-line"):
         assert name in instruction
-    assert "intro uses title-card" in instruction
+    assert "concept uses a relationship structure" in instruction
+    assert "concept-scene" not in instruction
+    assert "shape-picture" not in instruction
 
 
 def test_catalog_for_a_kind_hides_the_other_tools():
@@ -340,17 +342,22 @@ def test_catalog_for_a_kind_hides_the_other_tools():
 
     intro = component_catalog("intro")
     wording = component_catalog("wording")
+    template = component_catalog("template")
     concept = component_catalog("concept")
 
     assert intro.startswith("This beat kind is intro.")
     assert "- title-card" in intro
-    assert "- shape-picture" not in intro
+    assert "- label-plus-group" not in intro
     assert "- kinetic-text" in wording
     assert "- title-card" not in wording
-    assert "- shape-picture" not in wording
-    assert "- shape-picture" in concept
+    assert "- label-plus-group" not in wording
+    assert template == concept
+    assert "- label-plus-group" in concept
+    assert "- compare-two" in concept
+    assert "- process-loop" in concept
+    assert "- concept-scene" not in concept
+    assert "- shape-picture" not in concept
     assert "- kinetic-text" not in concept
-    assert "- title-card" not in concept
 
 
 def test_a_drawn_picture_follows_the_spoken_words():
@@ -422,6 +429,117 @@ def test_title_card_and_kinetic_text_follow_spoken_words():
         {"component": "title-card", "settings": {"title": "English", "subtitle": "", "emblem": "book"}}
     )
     assert end_state_for(choice)["title"] == "English"
+
+
+def test_wording_shows_on_screen_not_the_spoken_line(tmp_path):
+    from app.visuals.generate import apply_on_screen_words, resolve_choice
+    from app.visuals.schema import VisualBeat
+
+    spoken = "Notice how each sentence begins with a capital and ends with a period."
+    screen = "Max is my dog. He loves to run in the park. He always brings back his ball."
+    choice = CHOICE_ADAPTER.validate_python(
+        {
+            "component": "kinetic-text",
+            "settings": {"sentence": spoken, "motion": "reveal"},
+        }
+    )
+    beat = VisualBeat(id="max1", text=spoken, visual=screen, kind="wording")
+    fixed = apply_on_screen_words(beat, choice)
+    assert fixed.settings.sentence == screen
+    assert fixed.settings.motion == "highlight"
+    visual = resolve_choice(beat, choice)
+    html = write_visual_page(visual, tmp_path).read_text()
+    assert visual.settings["sentence"] == screen
+    assert "Max is my dog" in html
+    assert "Notice how each sentence" not in html
+
+
+def test_empty_on_screen_does_not_show_the_spoken_line(tmp_path):
+    from app.visuals.generate import apply_on_screen_words, resolve_choice
+    from app.visuals.schema import VisualBeat
+
+    spoken = "Notice how each sentence begins with a capital and ends with a period."
+    choice = CHOICE_ADAPTER.validate_python(
+        {
+            "component": "kinetic-text",
+            "settings": {"sentence": spoken, "motion": "highlight"},
+        }
+    )
+    beat = VisualBeat(id="blank1", text=spoken, visual="", kind="wording")
+    fixed = apply_on_screen_words(beat, choice)
+    assert fixed.settings.sentence == ""
+    html = write_visual_page(resolve_choice(beat, choice), tmp_path).read_text()
+    assert "Notice how each sentence" not in html
+
+
+def test_a_label_plus_group_follows_spoken_cues(tmp_path):
+    from app.visuals.cues import cues_for
+    from app.visuals.schema import WordTime
+
+    words = [
+        WordTime(word="A", start=0.0, end=0.1),
+        WordTime(word="flock", start=0.2, end=0.5),
+        WordTime(word="is", start=0.5, end=0.6),
+        WordTime(word="one", start=0.6, end=0.8),
+        WordTime(word="word", start=0.8, end=1.0),
+        WordTime(word="for", start=1.0, end=1.1),
+        WordTime(word="a", start=1.1, end=1.2),
+        WordTime(word="whole", start=1.2, end=1.5),
+        WordTime(word="group", start=1.5, end=1.8),
+        WordTime(word="crowd", start=2.0, end=2.3),
+        WordTime(word="herd", start=2.4, end=2.7),
+        WordTime(word="bunch", start=2.8, end=3.1),
+    ]
+    settings = {
+        "title": "collective noun",
+        "badge": "1 word",
+        "label": "flock",
+        "group_icon": "bird",
+        "count": 5,
+        "caption": "whole group",
+        "examples": [
+            {"icon": "people", "label": "crowd"},
+            {"icon": "paw", "label": "herd"},
+            {"icon": "banana", "label": "bunch"},
+        ],
+    }
+    cues = cues_for("label-plus-group", settings, words, 4.0)
+    assert cues["reveal_0"] == 0.2
+    assert cues["reveal_1"] == 1.2
+    assert cues["reveal_2"] == 2.0
+    choice = CHOICE_ADAPTER.validate_python({"component": "label-plus-group", "settings": settings})
+    assert end_state_for(choice)["label"] == "flock"
+    from app.visuals.generate import resolve_choice
+    from app.visuals.render_html import write_visual_page
+    from app.visuals.schema import VisualBeat
+
+    visual = resolve_choice(
+        VisualBeat(id="flock1", text="A flock is one word for a whole group.", visual="Flock stands for birds.", kind="concept"),
+        choice,
+    )
+    html = write_visual_page(visual, tmp_path).read_text()
+    assert 'viewBox="0 0 1000 562"' in html
+    assert 'data-drag="label"' in html
+    assert "flock" in html
+    assert "ICON_PATHS" in html
+
+
+def test_an_unknown_icon_is_rejected():
+    try:
+        CHOICE_ADAPTER.validate_python(
+            {
+                "component": "label-plus-group",
+                "settings": {
+                    "title": "group",
+                    "label": "flock",
+                    "group_icon": "dragon",
+                    "count": 4,
+                },
+            }
+        )
+    except ValidationError:
+        return
+    raise AssertionError("expected an unknown icon to be rejected")
 
 
 def test_unknown_component_is_rejected():

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.auth import owner_id_from_authorization
+from app.beat_kind import parse_kind
 from app.config import get_settings
 from app.db import get_session
 from app.export_service import ExportFailed, write_export
@@ -105,7 +106,7 @@ def list_lessons(
 class BeatUpdate(BaseModel):
     text: str
     visual: str = ""
-    kind: Literal["intro", "wording", "concept"] = "concept"
+    kind: Literal["intro", "wording", "template", "concept"] = "concept"
     checkpoint: bool = False
 
     @field_validator("text")
@@ -115,6 +116,11 @@ class BeatUpdate(BaseModel):
         if not cleaned:
             raise ValueError("Spoken line is required")
         return cleaned
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def kind_is_current(cls, value: object) -> str:
+        return parse_kind(value, "concept") or "concept"
 
 
 @router.patch("/v1/lessons/{lesson_id}/beats/{beat_id}", response_model=LessonRecord)

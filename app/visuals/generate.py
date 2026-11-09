@@ -13,8 +13,9 @@ from pydantic_ai import Agent
 
 from app.ai_client import AIError, build_model
 from app.runtime_settings import AITaskSettings, get_store
-from app.visuals.components import CHOICE_ADAPTER, VisualChoice, choice_type_for, end_state_for
-from app.visuals.cues import cues_for
+from app.beat_kind import parse_kind
+from app.visuals.components import CHOICE_ADAPTER, COMPONENTS_FOR_KIND, VisualChoice, choice_type_for, end_state_for
+from app.visuals.cues import _content_tokens, cues_for
 from app.visuals.instruction import build_visual_instruction
 from app.visuals.render_html import write_visual_page
 from app.visuals.schema import ResolvedVisual, VisualBeat
@@ -25,7 +26,33 @@ _RETRYABLE = frozenset({"ModelRateLimitError", "ModelUnavailableError"})
 _RETRY_WAITS = (20.0, 40.0, 60.0, 60.0, 60.0)
 
 
+def apply_on_screen_words(beat: VisualBeat, choice: VisualChoice) -> VisualChoice:
+    """Wording slides use On screen only. Spoken text is never copied onto the board."""
+    if choice.component not in {"kinetic-text", "highlight-words"}:
+        return choice
+    sentence = (beat.visual or "").strip()[:400]
+    data = choice.settings.model_dump()
+    data["sentence"] = sentence
+    shown = set(_content_tokens(sentence))
+    if choice.component == "kinetic-text" and data.get("motion") == "reveal":
+        spoken = _content_tokens(beat.text)
+        overlap = sum(1 for token in spoken if token in shown) if spoken else 0
+        if not sentence or not spoken or overlap / len(spoken) < 0.4:
+            data["motion"] = "highlight"
+    if choice.component == "highlight-words":
+        kept = [
+            phrase
+            for phrase in data.get("emphasis") or []
+            if any(token in shown for token in _content_tokens(str(phrase)))
+        ]
+        if not kept:
+            kept = [token for token in _content_tokens(beat.text) if token in shown][:12]
+        data["emphasis"] = kept
+    return CHOICE_ADAPTER.validate_python({"component": choice.component, "settings": data})
+
+
 def resolve_choice(beat: VisualBeat, choice: VisualChoice) -> ResolvedVisual:
+    choice = apply_on_screen_words(beat, choice)
     settings = choice.settings.model_dump()
     return ResolvedVisual(
         id=beat.id,
@@ -79,6 +106,11 @@ async def generate_visual(
     except AIError:
         raise
 
+    kind = parse_kind(beat.kind)
+    allowed = COMPONENTS_FOR_KIND.get(kind or "")
+    if allowed and choice.component not in allowed:
+        raise AIError(f"The picture for a {kind} line cannot be {choice.component}.")
+
     visual = resolve_choice(beat, choice)
     page = write_visual_page(visual, output_dir or Path("output") / "visuals")
     visual.html_file = str(page)
@@ -128,7 +160,7 @@ def _visual_error(beat: VisualBeat, exc: BaseException) -> str:
 
 
 def _user_prompt(beat: VisualBeat) -> str:
-    kind = beat.kind or "unknown"
+    kind = parse_kind(beat.kind) or "unknown"
     return (
         f"Choose a component for this beat. The beat kind is {kind}.\n"
         f"{beat.model_dump_json(indent=2)}"

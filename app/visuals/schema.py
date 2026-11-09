@@ -1,8 +1,8 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.beat_kind import BeatKind
+from app.beat_kind import BeatKind, parse_kind
 from app.runtime_settings import AITaskSettings
 
 
@@ -15,13 +15,18 @@ class WordTime(BaseModel):
 class VisualBeat(BaseModel):
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     text: str = Field(min_length=1, max_length=2000)
-    visual: str = Field(min_length=1, max_length=2000)
+    visual: str = Field(default="", max_length=2000)
     kind: BeatKind | None = None
     checkpoint: bool = False
     duration: float | None = Field(default=None, ge=0)
     previous_end_state: dict[str, Any] | None = None
     words: list[WordTime] = Field(default_factory=list)
     audio_file: str = ""
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def stored_kind_is_current(cls, value: object) -> str | None:
+        return parse_kind(value)
 
 
 class ResolvedVisual(BaseModel):

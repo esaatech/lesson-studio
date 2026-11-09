@@ -1,5 +1,9 @@
 """Shared picture CSS and drawing functions for the lesson page and the beat preview."""
 
+import json
+
+from app.visuals.icons import ICON_PATHS
+
 STAGE_CSS = """
     .scene-title { margin: 0 0 18px; font-size: 28px; font-weight: 600; }
     .mark-row { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
@@ -54,6 +58,7 @@ STAGE_CSS = """
     .kinetic { font-size: 40px; line-height: 1.45; text-align: center; }
     .kinetic span.on { background: #ffe08a; }
     .kinetic.reveal span.wait { opacity: 0.18; }
+    .concept-svg { width: 100%; height: auto; max-height: 420px; display: block; }
 """
 
 STAGE_SCRIPT = r"""
@@ -119,6 +124,100 @@ STAGE_SCRIPT = r"""
         return on ? `<span class="on">${escapeHtml(token)}</span>` : escapeHtml(token);
       }).join("");
       stage.innerHTML = `<div class="kinetic ${motion}" data-drag="sentence">${html}</div>`;
+    }
+
+    function sceneColor(value, fallback) {
+      return /^#[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$/.test(String(value || "")) ? String(value) : fallback;
+    }
+
+    function scenePath(d) {
+      return String(d || "").replace(/[^0-9eE.+,\sMLHVCSQTAZmlhvcsqtaz-]/g, "").slice(0, 800);
+    }
+
+    function sceneMarks(marks, amount) {
+      return (marks || []).map((mark) => {
+        if (mark.kind === "text") return "";
+        const fill = sceneColor(mark.fill, "none");
+        const stroke = sceneColor(mark.stroke, "#2f6f4e");
+        if (mark.kind === "rect") {
+          return `<rect x="${Number(mark.x) || 0}" y="${Number(mark.y) || 0}" width="${Number(mark.w) || 0}" height="${Number(mark.h) || 0}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="3"/>`;
+        }
+        if (mark.kind === "circle") {
+          return `<circle cx="${Number(mark.x) || 0}" cy="${Number(mark.y) || 0}" r="${Number(mark.r) || 0}" fill="${fill}" stroke="${stroke}" stroke-width="3"/>`;
+        }
+        if (mark.kind === "line") {
+          return `<line x1="${Number(mark.x) || 0}" y1="${Number(mark.y) || 0}" x2="${Number(mark.x2) || 0}" y2="${Number(mark.y2) || 0}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/>`;
+        }
+        const d = scenePath(mark.d);
+        if (fill !== "none") {
+          return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+        return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${(100 * (1 - amount)).toFixed(2)}"/>`;
+      }).join("");
+    }
+
+    function cellGroup(x, y, w, h, inner, opacity, drag) {
+      const s = Math.min(w, h) / 100;
+      const ox = x + (w - 100 * s) / 2;
+      const oy = y + (h - 100 * s) / 2;
+      const clip = "clip-" + String(drag).replace(/[^A-Za-z0-9_-]/g, "");
+      return `<clipPath id="${clip}"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath>
+        <g clip-path="url(#${clip})" data-drag="${drag}" style="opacity:${opacity}">
+          <g transform="translate(${ox} ${oy}) scale(${s})">${inner}</g>
+        </g>`;
+    }
+
+    function renderConceptScene(settings, t, beat) {
+      const asideLabel = String(settings.aside_label || "").trim();
+      const examples = settings.examples || [];
+      const caption = String(settings.caption || "").trim();
+      const slots = (asideLabel ? 1 : 0) + 1 + examples.length + (caption ? 1 : 0);
+      const count = Math.max(1, slots);
+      let index = 0;
+      function take() {
+        const current = index;
+        index += 1;
+        return shown(t, beat, current, count) ? 1 : 0.14;
+      }
+      const asideOn = asideLabel ? take() : 0;
+      const mainIndex = index;
+      const mainOn = take();
+      const exampleOn = examples.map(() => take());
+      const captionOn = caption ? take() : 0;
+      const mainStart = revealTime(beat, mainIndex, count);
+      const amount = span(t, mainStart, mainStart + 0.45);
+      const hasAside = !!asideLabel;
+      const mainX = hasAside ? 400 : 120;
+      const mainW = hasAside ? 540 : 760;
+      const mainY = 88;
+      const mainH = examples.length ? 200 : 280;
+      let drawing = `<text x="500" y="52" text-anchor="middle" fill="#b4532a" font-size="40" font-family="Georgia, serif" font-weight="700" data-drag="title">${escapeHtml(settings.title || "")}</text>`;
+      if (hasAside) {
+        drawing += `<g data-drag="aside" style="opacity:${asideOn}">
+          <rect x="48" y="128" width="280" height="156" rx="22" fill="#f6e7c1" stroke="#b4532a" stroke-width="4"/>
+          ${settings.aside_badge ? `<rect x="118" y="146" width="140" height="26" rx="13" fill="#b4532a"/><text x="188" y="165" text-anchor="middle" fill="#fff" font-size="14" font-family="sans-serif">${escapeHtml(settings.aside_badge)}</text>` : ""}
+          <text x="188" y="${settings.aside_badge ? 214 : 220}" text-anchor="middle" fill="#1d2430" font-size="32" font-family="Georgia, serif">${escapeHtml(asideLabel)}</text>
+        </g>
+        <line x1="328" y1="206" x2="400" y2="206" stroke="#1d2430" stroke-width="4"/>`;
+      }
+      drawing += cellGroup(mainX, mainY, mainW, mainH, sceneMarks(settings.main_marks, amount), mainOn, "drawing");
+      if (caption) {
+        drawing += `<text x="${hasAside ? 670 : 500}" y="${examples.length ? 318 : 420}" text-anchor="middle" fill="#5c564c" font-size="20" font-family="Georgia, serif" data-drag="caption" style="opacity:${captionOn}">${escapeHtml(caption)}</text>`;
+      }
+      if (examples.length) {
+        const gap = 16;
+        const cardW = (1000 - 96 - gap * (examples.length - 1)) / examples.length;
+        examples.forEach((item, exampleIndex) => {
+          const x = 48 + exampleIndex * (cardW + gap);
+          const y = 348;
+          drawing += `<g data-drag="example-${exampleIndex}" style="opacity:${exampleOn[exampleIndex]}">
+            <rect x="${x}" y="${y}" width="${cardW}" height="132" rx="18" fill="#fff" stroke="#d9d2c5" stroke-width="3"/>
+            ${cellGroup(x + 16, y + 10, cardW - 32, 78, sceneMarks(item.marks, 1), 1, "example-icon-" + exampleIndex)}
+            <text x="${x + cardW / 2}" y="462" text-anchor="middle" fill="#1d2430" font-size="20" font-family="Georgia, serif">${escapeHtml(item.label || "")}</text>
+          </g>`;
+        });
+      }
+      stage.innerHTML = `<svg class="concept-svg" viewBox="0 0 1000 562" data-drag="drawing">${drawing}</svg>`;
     }
 
     function renderDigitSlide(settings, t, beat) {
@@ -328,9 +427,147 @@ STAGE_SCRIPT = r"""
       </div>${note}`;
     }
 
+    function iconAt(name, cx, cy, size, fill) {
+      const d = ICON_PATHS[name] || ICON_PATHS.dots;
+      const s = size / 100;
+      return `<g transform="translate(${cx - size / 2} ${cy - size / 2}) scale(${s})"><path d="${d}" fill="${fill || "#2f6f4e"}" stroke="#1d2430" stroke-width="${Math.max(1.8, 2.4 / s)}" stroke-linejoin="round" stroke-linecap="round"/></g>`;
+    }
+
+    function groupMembers(icon, count, cx, cy, radius) {
+      const n = Math.max(2, Math.min(6, Number(count) || 3));
+      const items = [];
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const r = radius * 0.48;
+        items.push(iconAt(icon, cx + Math.cos(a) * r, cy + Math.sin(a) * r, 26, "#2f6f4e"));
+      }
+      return items.join("");
+    }
+
+    function renderLabelPlusGroup(settings, t, beat) {
+      const examples = settings.examples || [];
+      const slots = 1 + 1 + examples.length + (settings.caption ? 1 : 0);
+      const labelOn = shown(t, beat, 0, slots) ? 1 : 0.14;
+      const ringIndex = 1;
+      const ringOn = shown(t, beat, ringIndex, slots) ? 1 : 0.14;
+      const ringAmount = span(t, revealTime(beat, ringIndex, slots), revealTime(beat, ringIndex, slots) + 0.45);
+      const exampleOn = examples.map((_, index) => shown(t, beat, 2 + index, slots) ? 1 : 0.14);
+      const captionOn = settings.caption && shown(t, beat, slots - 1, slots) ? 1 : 0;
+      const cx = 620;
+      const cy = 196;
+      const r = 108;
+      let drawing = `<text x="500" y="48" text-anchor="middle" fill="#b4532a" font-size="36" font-family="Georgia, serif" font-weight="700" data-drag="title">${escapeHtml(settings.title || "")}</text>`;
+      drawing += `<g data-drag="label" style="opacity:${labelOn}">
+        <rect x="48" y="118" width="250" height="150" rx="22" fill="#f6e7c1" stroke="#b4532a" stroke-width="4"/>
+        ${settings.badge ? `<rect x="103" y="136" width="140" height="26" rx="13" fill="#b4532a"/><text x="173" y="155" text-anchor="middle" fill="#fff" font-size="14" font-family="sans-serif">${escapeHtml(settings.badge)}</text>` : ""}
+        <text x="173" y="${settings.badge ? 214 : 206}" text-anchor="middle" fill="#1d2430" font-size="32" font-family="Georgia, serif">${escapeHtml(settings.label || "")}</text>
+      </g>
+      <line x1="298" y1="193" x2="512" y2="193" stroke="#1d2430" stroke-width="4"/>`;
+      drawing += `<g data-drag="drawing" style="opacity:${ringOn}">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="#eef4ea" stroke="#2f6f4e" stroke-width="4" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${(100 * (1 - ringAmount)).toFixed(2)}"/>
+        ${groupMembers(settings.group_icon, settings.count, cx, cy, r)}
+      </g>`;
+      if (settings.caption) {
+        drawing += `<text x="${cx}" y="328" text-anchor="middle" fill="#5c564c" font-size="20" font-family="Georgia, serif" data-drag="caption" style="opacity:${captionOn}">${escapeHtml(settings.caption)}</text>`;
+      }
+      if (examples.length) {
+        const gap = 16;
+        const cardW = (1000 - 96 - gap * (examples.length - 1)) / examples.length;
+        examples.forEach((item, index) => {
+          const x = 48 + index * (cardW + gap);
+          drawing += `<g data-drag="example-${index}" style="opacity:${exampleOn[index]}">
+            <rect x="${x}" y="360" width="${cardW}" height="150" rx="18" fill="#fff" stroke="#d9d2c5" stroke-width="3"/>
+            ${iconAt(item.icon, x + cardW / 2, 422, 54, "#5b3ea6")}
+            <text x="${x + cardW / 2}" y="488" text-anchor="middle" fill="#1d2430" font-size="20" font-family="Georgia, serif">${escapeHtml(item.label || "")}</text>
+          </g>`;
+        });
+      }
+      stage.innerHTML = `<svg class="concept-svg" viewBox="0 0 1000 562" data-drag="drawing">${drawing}</svg>`;
+    }
+
+    function renderCompareTwo(settings, t, beat) {
+      const left = shown(t, beat, 0, 2) ? 1 : 0.2;
+      const right = shown(t, beat, 1, 2) ? 1 : 0.2;
+      stage.innerHTML = `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title || "")}</h2>
+        <div class="compare">
+          <article class="compare-card" data-drag="left" style="opacity:${left}">${iconWrap(settings.left_icon, "#2f6f4e")}<p class="compare-text">${escapeHtml(settings.left_label || "")}</p></article>
+          <div class="link-bridge"><p class="relation">${escapeHtml(settings.versus || "or")}</p></div>
+          <article class="compare-card after" data-drag="right" style="opacity:${right}">${iconWrap(settings.right_icon, "#b4532a")}<p class="compare-text">${escapeHtml(settings.right_label || "")}</p></article>
+        </div>`;
+    }
+
+    function iconWrap(name, fill) {
+      return `<svg viewBox="0 0 100 100" width="72" height="72">${iconAt(name, 50, 50, 88, fill)}</svg>`;
+    }
+
+    function renderPartWhole(settings, t, beat) {
+      const parts = settings.parts || [];
+      const slots = 1 + parts.length;
+      const wholeOn = shown(t, beat, 0, slots) ? 1 : 0.14;
+      let drawing = `<text x="500" y="48" text-anchor="middle" fill="#b4532a" font-size="36" font-family="Georgia, serif" font-weight="700" data-drag="title">${escapeHtml(settings.title || "")}</text>`;
+      drawing += `<g data-drag="whole" style="opacity:${wholeOn}">
+        <circle cx="500" cy="210" r="118" fill="#eef4ea" stroke="#2f6f4e" stroke-width="4"/>
+        ${iconAt(settings.whole_icon, 500, 200, 88, "#2f6f4e")}
+        <text x="500" y="292" text-anchor="middle" fill="#1d2430" font-size="22" font-family="Georgia, serif">${escapeHtml(settings.whole_label || "")}</text>
+      </g>`;
+      const gap = 16;
+      const cardW = (1000 - 96 - gap * Math.max(0, parts.length - 1)) / Math.max(1, parts.length);
+      parts.forEach((item, index) => {
+        const x = 48 + index * (cardW + gap);
+        const on = shown(t, beat, index + 1, slots) ? 1 : 0.14;
+        drawing += `<g data-drag="part-${index}" style="opacity:${on}">
+          <rect x="${x}" y="360" width="${cardW}" height="150" rx="18" fill="#fff" stroke="#d9d2c5" stroke-width="3"/>
+          ${iconAt(item.icon, x + cardW / 2, 422, 54, "#2f6f4e")}
+          <text x="${x + cardW / 2}" y="488" text-anchor="middle" fill="#1d2430" font-size="20" font-family="Georgia, serif">${escapeHtml(item.label || "")}</text>
+        </g>`;
+      });
+      stage.innerHTML = `<svg class="concept-svg" viewBox="0 0 1000 562" data-drag="drawing">${drawing}</svg>`;
+    }
+
+    function renderCauseEffect(settings, t, beat) {
+      const cause = shown(t, beat, 0, 3) ? 1 : 0.2;
+      const link = span(t, revealTime(beat, 1, 3), revealTime(beat, 1, 3) + 0.4);
+      const effect = shown(t, beat, 2, 3) ? 1 : 0.2;
+      const relation = shown(t, beat, 1, 3) ? 1 : 0;
+      stage.innerHTML = `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title || "")}</h2>
+        <div class="arrow-row">
+          <div class="link-card" data-drag="cause" style="opacity:${cause}">${iconWrap(settings.cause_icon, "#2f6f4e")}<p class="compare-text">${escapeHtml(settings.cause_label || "")}</p></div>
+          <div class="link-bridge">${bridge(link)}<div class="relation" data-drag="relation" style="opacity:${relation}">${escapeHtml(settings.relation || "")}</div></div>
+          <div class="link-card" data-drag="effect" style="opacity:${effect}">${iconWrap(settings.effect_icon, "#b4532a")}<p class="compare-text">${escapeHtml(settings.effect_label || "")}</p></div>
+        </div>`;
+    }
+
+    function renderProcessLoop(settings, t, beat) {
+      const steps = settings.steps || [];
+      const n = steps.length;
+      const cx = 500;
+      const cy = 300;
+      const radius = 168;
+      let drawing = `<text x="500" y="48" text-anchor="middle" fill="#b4532a" font-size="36" font-family="Georgia, serif" font-weight="700" data-drag="title">${escapeHtml(settings.title || "")}</text>`;
+      drawing += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#e6e0d6" stroke-width="6"/>`;
+      steps.forEach((item, index) => {
+        const a = -Math.PI / 2 + (index * 2 * Math.PI) / n;
+        const x = cx + Math.cos(a) * radius;
+        const y = cy + Math.sin(a) * radius;
+        const on = shown(t, beat, index, n) ? 1 : 0.18;
+        drawing += `<g data-drag="step-${index}" style="opacity:${on}">
+          <circle cx="${x}" cy="${y}" r="48" fill="#fff" stroke="#2f6f4e" stroke-width="3"/>
+          ${iconAt(item.icon, x, y - 6, 42, "#2f6f4e")}
+          <text x="${x}" y="${y + 72}" text-anchor="middle" fill="#1d2430" font-size="18" font-family="Georgia, serif">${escapeHtml(item.label || "")}</text>
+        </g>`;
+      });
+      stage.innerHTML = `<svg class="concept-svg" viewBox="0 0 1000 562" data-drag="drawing">${drawing}</svg>`;
+    }
+
     const renderers = {
       "title-card": renderTitleCard,
       "kinetic-text": renderKineticText,
+      "label-plus-group": renderLabelPlusGroup,
+      "compare-two": renderCompareTwo,
+      "part-whole": renderPartWhole,
+      "cause-effect": renderCauseEffect,
+      "process-loop": renderProcessLoop,
+      "concept-scene": renderConceptScene,
       "digit-slide": renderDigitSlide,
       "highlight-words": renderHighlightWords,
       "label-callout": renderLabelCallout,
@@ -394,3 +631,5 @@ STAGE_SCRIPT = r"""
       if (usedH <= availableH) stage.style.justifyContent = "center";
     }
 """
+
+STAGE_SCRIPT = "const ICON_PATHS = " + json.dumps(ICON_PATHS) + ";\n" + STAGE_SCRIPT

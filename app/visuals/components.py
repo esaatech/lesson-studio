@@ -1,8 +1,20 @@
 """Components the visual model is allowed to choose. Each one draws from progress p."""
 
+import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
+
+from app.beat_kind import parse_kind
+from app.visuals.icons import ICON_LIST, ICON_NAMES
+
+from app.beat_kind import parse_kind
+from app.visuals.icons import ICON_LIST, ICON_NAMES
+
+IconName = Literal[*ICON_NAMES]
+
+_HEX = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+_PATH_D = re.compile(r"^[0-9eE.+,\sMLHVCSQTAZmlhvcsqtaz-]*$")
 
 
 class DigitSlideSettings(BaseModel):
@@ -14,8 +26,16 @@ class DigitSlideSettings(BaseModel):
 
 
 class HighlightWordsSettings(BaseModel):
-    sentence: str = Field(min_length=1, max_length=400, description="Full sentence shown on screen")
-    emphasis: list[str] = Field(min_length=1, max_length=12, description="Words that light up in order as they are spoken")
+    sentence: str = Field(
+        default="",
+        max_length=400,
+        description="The sentence students should see. Copy the On screen text. Never copy the spoken line.",
+    )
+    emphasis: list[str] = Field(
+        default_factory=list,
+        max_length=12,
+        description="Words in the On screen text that light up when they are also spoken",
+    )
 
 
 class CalloutPart(BaseModel):
@@ -88,9 +108,143 @@ class TitleCardSettings(BaseModel):
 
 
 class KineticTextSettings(BaseModel):
-    sentence: str = Field(min_length=1, max_length=400, description="The words students should see, taken from the spoken line")
+    sentence: str = Field(
+        default="",
+        max_length=400,
+        description="The words students should see. Copy the On screen text. Never copy the spoken line. Empty On screen is a blank board.",
+    )
     motion: Literal["highlight", "reveal"] = Field(
         description="highlight lights spoken words in a visible sentence. reveal brings each word in as it is said.",
+    )
+
+
+IconName = Literal[*ICON_NAMES]
+
+
+class IconChip(BaseModel):
+    icon: IconName = Field(description=f"One of: {ICON_LIST}")
+    label: str = Field(min_length=1, max_length=24, description="One or two spoken words under the icon")
+
+
+class LabelPlusGroupSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="Topic title. We place it at the top.")
+    badge: str = Field(default="", max_length=20, description="Tiny kicker on the word card, such as 1 word. Empty if none.")
+    label: str = Field(min_length=1, max_length=24, description="The one word that stands for the group, such as flock")
+    group_icon: IconName = Field(description=f"Icon for each member of the group. One of: {ICON_LIST}")
+    count: int = Field(ge=2, le=6, description="How many members to stamp inside the ring, 2 to 6")
+    caption: str = Field(default="", max_length=40, description="Short line under the ring, such as a whole group. Empty if the title is enough.")
+    examples: list[IconChip] = Field(
+        default_factory=list,
+        max_length=4,
+        description="Optional other examples along the bottom, each with an icon from the set",
+    )
+
+
+class CompareTwoSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="What is being compared")
+    left_icon: IconName = Field(description=f"Icon for the first thing. One of: {ICON_LIST}")
+    left_label: str = Field(min_length=1, max_length=24, description="Spoken name of the first thing")
+    right_icon: IconName = Field(description=f"Icon for the second thing. One of: {ICON_LIST}")
+    right_label: str = Field(min_length=1, max_length=24, description="Spoken name of the second thing")
+    versus: str = Field(default="or", max_length=16, description="Short word between them, such as vs or or")
+
+
+class PartWholeSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="The whole thing being named")
+    whole_icon: IconName = Field(description=f"Icon for the whole. One of: {ICON_LIST}")
+    whole_label: str = Field(min_length=1, max_length=24, description="Spoken name of the whole")
+    parts: list[IconChip] = Field(min_length=2, max_length=4, description="Named parts of the whole")
+
+
+class CauseEffectSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="The change being shown")
+    cause_icon: IconName = Field(description=f"Icon for the cause. One of: {ICON_LIST}")
+    cause_label: str = Field(min_length=1, max_length=24, description="Spoken cause")
+    relation: str = Field(min_length=1, max_length=32, description="Short link on the arrow, such as leads to")
+    effect_icon: IconName = Field(description=f"Icon for the effect. One of: {ICON_LIST}")
+    effect_label: str = Field(min_length=1, max_length=24, description="Spoken effect")
+
+
+class ProcessLoopSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="The cycle being shown")
+    steps: list[IconChip] = Field(min_length=3, max_length=5, description="Steps around the loop, in order")
+
+
+class SceneMark(BaseModel):
+    kind: Literal["path", "rect", "circle", "line", "text"] = Field(
+        description="path, rect, circle, line, or text"
+    )
+    d: str = Field(
+        default="",
+        max_length=800,
+        description="SVG path in 0-100 local coordinates for kind path. Empty otherwise.",
+    )
+    x: float = Field(default=0, ge=0, le=100, description="x in 0-100 of this cell")
+    y: float = Field(default=0, ge=0, le=100, description="y in 0-100 of this cell")
+    x2: float = Field(default=0, ge=0, le=100, description="line end x in 0-100")
+    y2: float = Field(default=0, ge=0, le=100, description="line end y in 0-100")
+    w: float = Field(default=0, ge=0, le=100, description="rect width in 0-100")
+    h: float = Field(default=0, ge=0, le=100, description="rect height in 0-100")
+    r: float = Field(default=0, ge=0, le=50, description="circle radius in 0-50 of this cell")
+    text: str = Field(default="", max_length=24, description="Short label inside the drawing. Empty if the cell label is enough.")
+    fill: str = Field(default="none", max_length=7, description="none or a hex color such as #f6f3ec")
+    stroke: str = Field(default="#2f6f4e", max_length=7, description="hex color such as #2f6f4e")
+
+    @field_validator("fill")
+    @classmethod
+    def fill_is_safe(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned in {"", "none", "transparent"}:
+            return "none"
+        if _HEX.fullmatch(value.strip()):
+            return value.strip()
+        return "none"
+
+    @field_validator("stroke")
+    @classmethod
+    def stroke_is_safe(cls, value: str) -> str:
+        cleaned = value.strip()
+        if _HEX.fullmatch(cleaned):
+            return cleaned
+        return "#2f6f4e"
+
+    @field_validator("d")
+    @classmethod
+    def path_is_safe(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        if _PATH_D.fullmatch(cleaned):
+            return cleaned[:800]
+        return re.sub(r"[^0-9eE.+,\sMLHVCSQTAZmlhvcsqtaz-]", "", cleaned)[:800]
+
+
+class SceneExample(BaseModel):
+    cue: str = Field(min_length=1, max_length=32, description="Spoken word that reveals this example card")
+    label: str = Field(min_length=1, max_length=24, description="One or two words under the icon")
+    marks: list[SceneMark] = Field(
+        min_length=1,
+        max_length=6,
+        description="Icon only, in 0-100 of the example cell. Do not draw the card or the label.",
+    )
+
+
+class ConceptSceneSettings(BaseModel):
+    title: str = Field(min_length=1, max_length=48, description="Topic title. We place it at the top. Do not draw it again.")
+    aside_badge: str = Field(default="", max_length=20, description="Tiny kicker on the word card, such as 1 word. Empty if none.")
+    aside_label: str = Field(default="", max_length=24, description="The key word on a card to the left of the drawing. Empty if the drawing stands alone.")
+    aside_cue: str = Field(default="", max_length=32, description="Spoken word that reveals the word card. Empty if aside_label is empty.")
+    caption: str = Field(default="", max_length=40, description="Short line under the main drawing, such as a whole group.")
+    main_cue: str = Field(min_length=1, max_length=32, description="Spoken word that reveals the main drawing")
+    main_marks: list[SceneMark] = Field(
+        min_length=1,
+        max_length=8,
+        description="The main picture only, in 0-100 of the main cell. Do not draw the title, word card, caption, or example row.",
+    )
+    examples: list[SceneExample] = Field(
+        default_factory=list,
+        max_length=4,
+        description="Optional example cards along the bottom. We place the cards. You only draw the icon inside each one.",
     )
 
 
@@ -154,6 +308,36 @@ class KineticTextChoice(BaseModel):
     settings: KineticTextSettings
 
 
+class ConceptSceneChoice(BaseModel):
+    component: Literal["concept-scene"]
+    settings: ConceptSceneSettings
+
+
+class LabelPlusGroupChoice(BaseModel):
+    component: Literal["label-plus-group"]
+    settings: LabelPlusGroupSettings
+
+
+class CompareTwoChoice(BaseModel):
+    component: Literal["compare-two"]
+    settings: CompareTwoSettings
+
+
+class PartWholeChoice(BaseModel):
+    component: Literal["part-whole"]
+    settings: PartWholeSettings
+
+
+class CauseEffectChoice(BaseModel):
+    component: Literal["cause-effect"]
+    settings: CauseEffectSettings
+
+
+class ProcessLoopChoice(BaseModel):
+    component: Literal["process-loop"]
+    settings: ProcessLoopSettings
+
+
 IntroChoice = TitleCardChoice
 
 WordingChoice = Annotated[
@@ -162,29 +346,35 @@ WordingChoice = Annotated[
 ]
 
 ConceptChoice = Annotated[
-    LabelCalloutChoice
+    LabelPlusGroupChoice
+    | CompareTwoChoice
     | PathTraceChoice
-    | StrokeDiagramChoice
-    | ShapePictureChoice
-    | ArrowLinkChoice
-    | BeforeAfterChoice
-    | MeasureChoice,
+    | PartWholeChoice
+    | CauseEffectChoice
+    | MeasureChoice
+    | ProcessLoopChoice,
     Field(discriminator="component"),
 ]
 
 VisualChoice = Annotated[
     TitleCardChoice
     | KineticTextChoice
+    | LabelPlusGroupChoice
+    | CompareTwoChoice
+    | PartWholeChoice
+    | CauseEffectChoice
+    | ProcessLoopChoice
     | DigitSlideChoice
     | HighlightWordsChoice
-    | LabelCalloutChoice
     | PathTraceChoice
+    | CodeLineChoice
+    | MeasureChoice
+    | ConceptSceneChoice
+    | LabelCalloutChoice
     | StrokeDiagramChoice
     | ShapePictureChoice
     | ArrowLinkChoice
-    | BeforeAfterChoice
-    | CodeLineChoice
-    | MeasureChoice,
+    | BeforeAfterChoice,
     Field(discriminator="component"),
 ]
 
@@ -193,45 +383,53 @@ CHOICE_ADAPTER = TypeAdapter(VisualChoice)
 SETTING_MODELS = {
     "title-card": TitleCardSettings,
     "kinetic-text": KineticTextSettings,
+    "label-plus-group": LabelPlusGroupSettings,
+    "compare-two": CompareTwoSettings,
+    "part-whole": PartWholeSettings,
+    "cause-effect": CauseEffectSettings,
+    "process-loop": ProcessLoopSettings,
     "digit-slide": DigitSlideSettings,
     "highlight-words": HighlightWordsSettings,
-    "label-callout": LabelCalloutSettings,
     "path-trace": PathTraceSettings,
+    "code-line": CodeLineSettings,
+    "measure": MeasureSettings,
+    "concept-scene": ConceptSceneSettings,
+    "label-callout": LabelCalloutSettings,
     "stroke-diagram": StrokeDiagramSettings,
     "shape-picture": ShapePictureSettings,
     "arrow-link": ArrowLinkSettings,
     "before-after": BeforeAfterSettings,
-    "code-line": CodeLineSettings,
-    "measure": MeasureSettings,
 }
 
 USE_WHEN = {
     "title-card": "Intro only. Name the lesson. Large title, optional subtitle, optional one emblem. Not an explanation.",
-    "kinetic-text": "Wording. The spoken language is what students see, highlighted or revealed as it is said.",
+    "kinetic-text": "Wording. Students see the On screen text only. Empty On screen is blank. To show the spoken line, it must be copied into On screen.",
     "digit-slide": "Wording. Only when one digit moves between place-value columns.",
-    "highlight-words": "Wording. Only when the point of the beat is the wording of one sentence.",
-    "label-callout": "Concept. A short list of named parts, with no drawn object.",
-    "path-trace": "Concept. Steps along a single line.",
-    "stroke-diagram": "Concept. A few shapes that draw themselves while they are named.",
-    "shape-picture": "Concept. A concrete object the student should see, with labels.",
-    "arrow-link": "Concept. Two things and the relationship between them.",
-    "before-after": "Concept. A change from one state to another.",
+    "highlight-words": "Wording. Students see the On screen sentence only. Emphasis marks spoken words that already appear on screen.",
     "code-line": "Wording. One line of code, with the important tokens marked.",
+    "label-plus-group": "Concept. One word stands for many things. A label, a ring of the same icon, optional other examples. English flock, math set, science species.",
+    "compare-two": "Concept. Two things side by side. Noun vs verb, odd vs even, plant vs animal cell.",
+    "path-trace": "Concept. Steps along a single line, in order.",
+    "part-whole": "Concept. Named parts of one whole. Sentence parts, fractions, parts of a plant.",
+    "cause-effect": "Concept. This leads to that. Punctuation changes meaning, adding raises the total, heat evaporates water.",
     "measure": "Concept. A number line or a bar that fills as quantities are spoken.",
+    "process-loop": "Concept. A cycle that returns to the start. Life cycle, water cycle, seasons.",
 }
+
+CONCEPT_COMPONENTS = (
+    "label-plus-group",
+    "compare-two",
+    "path-trace",
+    "part-whole",
+    "cause-effect",
+    "measure",
+    "process-loop",
+)
 
 COMPONENTS_FOR_KIND = {
     "intro": ("title-card",),
     "wording": ("kinetic-text", "highlight-words", "digit-slide", "code-line"),
-    "concept": (
-        "label-callout",
-        "path-trace",
-        "stroke-diagram",
-        "shape-picture",
-        "arrow-link",
-        "before-after",
-        "measure",
-    ),
+    "concept": CONCEPT_COMPONENTS,
 }
 
 CHOICE_TYPE_FOR_KIND = {
@@ -243,20 +441,22 @@ CHOICE_TYPE_FOR_KIND = {
 
 def choice_type_for(kind: str | None):
     """The pydantic output type the visual model may return for this beat kind."""
-    if kind in CHOICE_TYPE_FOR_KIND:
-        return CHOICE_TYPE_FOR_KIND[kind]
+    resolved = parse_kind(kind)
+    if resolved in CHOICE_TYPE_FOR_KIND:
+        return CHOICE_TYPE_FOR_KIND[resolved]
     return VisualChoice
 
 
 def component_catalog(kind: str | None = None) -> str:
     """The component list appended to the system instruction at call time."""
-    if kind in COMPONENTS_FOR_KIND:
-        names = COMPONENTS_FOR_KIND[kind]
-        lines = [f"This beat kind is {kind}. Choose only from these components."]
+    resolved = parse_kind(kind)
+    if resolved in COMPONENTS_FOR_KIND:
+        names = COMPONENTS_FOR_KIND[resolved]
+        lines = [f"This beat kind is {resolved}. Choose only from these components."]
     else:
-        names = tuple(SETTING_MODELS)
+        names = COMPONENTS_FOR_KIND["intro"] + COMPONENTS_FOR_KIND["wording"] + COMPONENTS_FOR_KIND["concept"]
         lines = [
-            "Allowed components. Match the beat kind: intro uses title-card, wording uses kinetic text, concept uses a drawing of the idea."
+            "Allowed components. Match the beat kind: intro uses title-card, wording uses kinetic text, concept uses a relationship structure. If no structure fits, wording is the fallback."
         ]
     for name in names:
         model = SETTING_MODELS[name]
@@ -283,6 +483,49 @@ def end_state_for(choice: VisualChoice) -> dict:
             "component": "kinetic-text",
             "sentence": settings.sentence,
             "motion": settings.motion,
+        }
+    if isinstance(choice, LabelPlusGroupChoice):
+        return {
+            "component": "label-plus-group",
+            "title": settings.title,
+            "label": settings.label,
+            "group_icon": settings.group_icon,
+            "examples": [item.label for item in settings.examples],
+        }
+    if isinstance(choice, CompareTwoChoice):
+        return {
+            "component": "compare-two",
+            "title": settings.title,
+            "left": settings.left_label,
+            "right": settings.right_label,
+        }
+    if isinstance(choice, PartWholeChoice):
+        return {
+            "component": "part-whole",
+            "title": settings.title,
+            "whole": settings.whole_label,
+            "parts": [item.label for item in settings.parts],
+        }
+    if isinstance(choice, CauseEffectChoice):
+        return {
+            "component": "cause-effect",
+            "title": settings.title,
+            "cause": settings.cause_label,
+            "effect": settings.effect_label,
+        }
+    if isinstance(choice, ProcessLoopChoice):
+        return {
+            "component": "process-loop",
+            "title": settings.title,
+            "steps": [item.label for item in settings.steps],
+        }
+    if isinstance(choice, ConceptSceneChoice):
+        return {
+            "component": "concept-scene",
+            "title": settings.title,
+            "aside": settings.aside_label,
+            "caption": settings.caption,
+            "examples": [item.label for item in settings.examples],
         }
     if isinstance(choice, DigitSlideChoice):
         return {

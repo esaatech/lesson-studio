@@ -179,6 +179,37 @@ def cues_for(component: str, settings: dict, words: list[WordTime], duration: fl
     if component == "kinetic-text":
         sentence = str(settings.get("sentence") or "")
         return _reveal_cues(_content_tokens(sentence), words, length)
+    if component == "label-plus-group":
+        phrases = [str(settings.get("label") or "")]
+        caption = str(settings.get("caption") or "").strip()
+        if caption:
+            phrases.append(caption)
+        phrases.extend(_chip_labels(list(settings.get("examples") or [])))
+        return _reveal_cues(phrases, words, length)
+    if component == "compare-two":
+        return _reveal_cues(
+            [str(settings.get("left_label") or ""), str(settings.get("right_label") or "")],
+            words,
+            length,
+        )
+    if component == "part-whole":
+        phrases = [str(settings.get("whole_label") or "")]
+        phrases.extend(_chip_labels(list(settings.get("parts") or [])))
+        return _reveal_cues(phrases, words, length)
+    if component == "cause-effect":
+        return _reveal_cues(
+            [
+                str(settings.get("cause_label") or ""),
+                str(settings.get("relation") or ""),
+                str(settings.get("effect_label") or ""),
+            ],
+            words,
+            length,
+        )
+    if component == "process-loop":
+        return _reveal_cues(_chip_labels(list(settings.get("steps") or [])), words, length)
+    if component == "concept-scene":
+        return _reveal_cues(_concept_scene_phrases(settings), words, length)
     if component == "highlight-words":
         return _reveal_cues([str(item) for item in settings.get("emphasis") or []], words, length)
     if component == "label-callout":
@@ -212,6 +243,35 @@ def cues_for(component: str, settings: dict, words: list[WordTime], duration: fl
             phrases.append(caption)
         return _reveal_cues(phrases, words, length)
     return {}
+
+
+def _chip_labels(items: list) -> list[str]:
+    labels = []
+    for item in items:
+        if isinstance(item, dict):
+            labels.append(str(item.get("label") or ""))
+        else:
+            labels.append(str(getattr(item, "label", "") or ""))
+    return [label for label in labels if label]
+
+
+def _concept_scene_phrases(settings: dict) -> list[str]:
+    phrases: list[str] = []
+    aside = str(settings.get("aside_cue") or settings.get("aside_label") or "").strip()
+    if aside:
+        phrases.append(aside)
+    main = str(settings.get("main_cue") or "").strip()
+    if main:
+        phrases.append(main)
+    for item in settings.get("examples") or []:
+        if isinstance(item, dict):
+            phrases.append(str(item.get("cue") or item.get("label") or ""))
+        else:
+            phrases.append(str(getattr(item, "cue", "") or getattr(item, "label", "")))
+    caption = str(settings.get("caption") or "").strip()
+    if caption:
+        phrases.append(caption)
+    return [phrase for phrase in phrases if phrase]
 
 
 def _mark_texts(marks: list) -> list[str]:
