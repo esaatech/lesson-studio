@@ -11,7 +11,7 @@ from app.schemas import LessonAudioRequest, LessonAudioResponse
 from app.service import render_lesson_audio
 from app.visuals.generate import generate_visual
 from app.visuals.render_html import html_with_inline_audio
-from app.visuals.schema import VisualBeat, VisualRunRequest, VisualRunResponse
+from app.visuals.schema import VisualBeat, VisualRunRequest, VisualRunResponse, WordTime
 
 router = APIRouter()
 
@@ -46,7 +46,7 @@ async def create_visual(body: VisualRunRequest) -> VisualRunResponse | JSONRespo
             audio = await render_lesson_audio(LessonAudioRequest(beats=[{"id": beat.id, "text": beat.text}]))
             item = audio.beats[0]
             beat.duration = item.duration
-            beat.words = item.words
+            beat.words = [WordTime.model_validate(word.model_dump()) for word in item.words]
             beat.audio_file = str(Path(audio.output_dir) / item.audio_file)
         visual = await generate_visual(beat, task=body.visual_generator)
         page = Path(visual.html_file)

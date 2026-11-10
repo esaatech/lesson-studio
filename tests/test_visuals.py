@@ -278,6 +278,55 @@ def test_missing_provider_key_is_a_message(monkeypatch):
     assert response.json() == {"error": "GEMINI_API_KEY is not set"}
 
 
+def test_visual_run_keeps_spoken_word_times(monkeypatch, tmp_path):
+    from app.schemas import BeatOut, LessonAudioResponse, WordTiming
+    from app.visuals.generate import resolve_choice
+    from app.visuals.render_html import write_visual_page
+    from app.visuals.schema import WordTime
+
+    async def fake_audio(_request):
+        return LessonAudioResponse(
+            request_id="r1",
+            output_dir=str(tmp_path),
+            total_duration=0.4,
+            beats=[
+                BeatOut(
+                    id="p1",
+                    audio_file="p1.mp3",
+                    start=0,
+                    duration=0.4,
+                    end=0.4,
+                    words=[WordTiming(word="Hello", start=0.0, end=0.4)],
+                )
+            ],
+        )
+
+    async def fake_generate(beat, output_dir=None, task=None):
+        assert all(isinstance(word, WordTime) for word in beat.words)
+        choice = CHOICE_ADAPTER.validate_python(
+            {"component": "kinetic-text", "settings": {"sentence": "Hello", "motion": "highlight"}}
+        )
+        visual = resolve_choice(beat, choice)
+        page = write_visual_page(visual, tmp_path)
+        visual.html_file = str(page)
+        return visual
+
+    monkeypatch.setattr("app.routes.render_lesson_audio", fake_audio)
+    monkeypatch.setattr("app.routes.generate_visual", fake_generate)
+    client = TestClient(app)
+    response = client.post(
+        "/v1/visuals",
+        json={
+            "id": "p1",
+            "text": "Hello.",
+            "visual": "Hello",
+            "generate_audio": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["words"] == [{"word": "Hello", "start": 0.0, "end": 0.4}]
+
+
 def test_visual_run_returns_html_and_uses_the_requested_prompt(monkeypatch, tmp_path):
     from app.runtime_settings import AITaskSettings
     from app.visuals.generate import resolve_choice
