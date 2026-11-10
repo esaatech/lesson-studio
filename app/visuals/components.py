@@ -402,7 +402,7 @@ SETTING_MODELS = {
 }
 
 USE_WHEN = {
-    "title-card": "Intro only. Name the lesson. Large title, optional subtitle, optional one emblem. Not an explanation.",
+    "title-card": "Intro only. Name the lesson, or the section that is starting. Large title, optional subtitle, optional one emblem. Not an explanation.",
     "kinetic-text": "Wording. Students see the On screen text only. Empty On screen is blank. To show the spoken line, it must be copied into On screen.",
     "digit-slide": "Wording. Only when one digit moves between place-value columns.",
     "highlight-words": "Wording. Students see the On screen sentence only. Emphasis marks spoken words that already appear on screen.",

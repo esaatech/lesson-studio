@@ -33,11 +33,6 @@ class DraftScript(BaseModel):
         ids = [beat.id for beat in self.beats]
         if len(ids) != len(set(ids)):
             raise ValueError("beat ids must be unique")
-        intro_indexes = [index for index, beat in enumerate(self.beats) if beat.kind == "intro"]
-        if len(intro_indexes) > 1:
-            raise ValueError("a lesson may have only one intro")
-        if intro_indexes and intro_indexes[0] != 0:
-            raise ValueError("intro may only be the first line")
         return self
 
 

@@ -151,24 +151,16 @@ def test_one_line_cannot_pack_a_paragraph():
     raise AssertionError("expected a 221 character line to be rejected")
 
 
-def test_intro_may_only_be_the_first_line():
-    from pydantic import ValidationError
-
+def test_each_named_section_may_open_with_an_intro():
     from app.script_draft import DraftScript
 
-    DraftScript(
+    script = DraftScript(
         beats=[
-            {"id": "b1", "text": "Welcome to English.", "kind": "intro", "visual": "Title English."},
-            {"id": "b2", "text": "A verb names an action.", "kind": "concept", "visual": "An action arrow."},
+            {"id": "b1", "text": "Welcome to nouns.", "kind": "intro", "visual": "Title Nouns."},
+            {"id": "b2", "text": "A noun names a person, place, thing, or idea.", "kind": "concept", "visual": "Person, place, thing, idea."},
+            {"id": "b3", "text": "Common nouns.", "kind": "intro", "visual": "Title Common nouns."},
+            {"id": "b4", "text": "A common noun names any one of its kind.", "kind": "concept", "visual": "Any girl, any city."},
+            {"id": "b5", "text": "Proper nouns.", "kind": "intro", "visual": "Title Proper nouns."},
         ]
     )
-    try:
-        DraftScript(
-            beats=[
-                {"id": "b1", "text": "A verb names an action.", "kind": "concept", "visual": "An action arrow."},
-                {"id": "b2", "text": "Welcome to English.", "kind": "intro", "visual": "Title English."},
-            ]
-        )
-    except ValidationError:
-        return
-    raise AssertionError("expected intro after the first line to be rejected")
+    assert [beat.kind for beat in script.beats] == ["intro", "concept", "intro", "concept", "intro"]
