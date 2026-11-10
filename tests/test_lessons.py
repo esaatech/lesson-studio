@@ -347,6 +347,142 @@ def test_owner_can_add_a_line_below_another(tmp_path, monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_owner_can_redraw_one_picture(tmp_path, monkeypatch):
+    from app.config import get_settings
+    from app.lesson.page import write_lesson_page
+    from app.schemas import BeatOut, LessonAudioResponse, WordTiming
+    from app.visuals.schema import ResolvedVisual, WordTime
+
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    store = MemoryLessonStore()
+    app.dependency_overrides[require_owner] = lambda: "teacher-a"
+    app.dependency_overrides[get_lesson_store] = lambda: store
+    spoken = {"calls": 0}
+    seen = {}
+
+    async def fake_audio(request):
+        spoken["calls"] += 1
+        folder = tmp_path / "spoken"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "b1.mp3").write_bytes(b"spoken")
+        return LessonAudioResponse(
+            request_id="r1",
+            output_dir=str(folder),
+            total_duration=2.0,
+            beats=[
+                BeatOut(
+                    id=request.beats[0].id,
+                    audio_file="b1.mp3",
+                    start=0,
+                    duration=2.0,
+                    end=2.0,
+                    words=[WordTiming(word="Park", start=0.0, end=0.4)],
+                )
+            ],
+        )
+
+    async def fake_visual(beat, output_dir=None, task=None):
+        seen["duration"] = beat.duration
+        seen["words"] = [(word.word, word.start, word.end) for word in beat.words]
+        seen["kind"] = beat.kind
+        seen["visual"] = beat.visual
+        return ResolvedVisual(
+            id=beat.id,
+            component="kinetic-text",
+            settings={"sentence": beat.visual, "motion": "highlight"},
+            end_state={"component": "kinetic-text"},
+            duration=beat.duration,
+            words=[WordTime.model_validate(word.model_dump()) for word in beat.words],
+            audio_file=beat.audio_file,
+            html_file="",
+        )
+
+    monkeypatch.setattr("app.beat_redraw.render_lesson_audio", fake_audio)
+    monkeypatch.setattr("app.beat_redraw.generate_visual", fake_visual)
+    client = TestClient(app)
+    try:
+        beats = [
+            {
+                "id": "b1",
+                "text": "Welcome.",
+                "visual": "A welcome badge.",
+                "kind": "intro",
+                "component": "title-card",
+                "settings": {"title": "Welcome"},
+                "audio_file": "b1.mp3",
+                "words": [{"word": "Welcome", "start": 0.0, "end": 0.5}],
+                "start": 0,
+                "end": 1.2,
+                "duration": 1.2,
+                "pause_after": 0,
+                "layout": {"pieces": {"title": {"x": -8, "y": 0}}},
+            },
+            {
+                "id": "b2",
+                "text": "A noun names a person.",
+                "visual": "A person.",
+                "kind": "concept",
+                "component": "label-plus-group",
+                "settings": {"title": "Nouns", "label": "person"},
+                "audio_file": "b2.mp3",
+                "words": [{"word": "noun", "start": 0.0, "end": 0.4}],
+                "start": 1.2,
+                "end": 3.0,
+                "duration": 1.8,
+                "pause_after": 0,
+                "layout": {"pieces": {"title": {"x": 4, "y": 0}}},
+            },
+        ]
+        lesson = store.create("teacher-a", "Nouns", beats, status="rendered")
+        page = write_lesson_page(str(lesson.id), beats, 3.0, tmp_path / "lessons" / str(lesson.id))
+        store.save_render(lesson.id, beats, str(page.parent), str(page))
+        same_words = client.post(
+            f"/v1/lessons/{lesson.id}/beats/b1/redraw",
+            json={"text": "Welcome.", "visual": "Welcome on the board.", "kind": "wording"},
+        )
+        assert same_words.status_code == 200
+        assert spoken["calls"] == 0
+        assert seen["duration"] == 1.2
+        assert seen["words"] == [("Welcome", 0.0, 0.5)]
+        assert seen["kind"] == "wording"
+        redrawn = same_words.json()["beats"]
+        assert redrawn[0]["component"] == "kinetic-text"
+        assert redrawn[0]["settings"]["sentence"] == "Welcome on the board."
+        assert redrawn[0]["layout"] == {}
+        assert redrawn[0]["start"] == 0
+        assert redrawn[1]["start"] == 1.2
+        assert redrawn[1]["component"] == "label-plus-group"
+        assert redrawn[1]["layout"]["pieces"]["title"]["x"] == 4
+        changed_words = client.post(
+            f"/v1/lessons/{lesson.id}/beats/b1/redraw",
+            json={"text": "Park is a place.", "visual": "A park.", "kind": "wording"},
+        )
+        assert changed_words.status_code == 200
+        assert spoken["calls"] == 1
+        assert seen["words"] == [("Park", 0.0, 0.4)]
+        assert seen["duration"] == 2.0
+        moved = changed_words.json()["beats"]
+        assert moved[0]["text"] == "Park is a place."
+        assert moved[0]["end"] == 2.0
+        assert moved[1]["start"] == 2.0
+        assert moved[1]["end"] == 3.8
+        assert (page.parent / "b1.mp3").is_file()
+        saved_page = json.loads((page.parent / "lesson.json").read_text())
+        assert saved_page["beats"][0]["component"] == "kinetic-text"
+        assert saved_page["beats"][1]["text"] == "A noun names a person."
+        busy = store.mark_status(lesson.id, "rendering")
+        assert busy is not None
+        refused = client.post(
+            f"/v1/lessons/{lesson.id}/beats/b1/redraw",
+            json={"text": "Welcome.", "visual": "A park.", "kind": "wording"},
+        )
+        assert refused.status_code == 409
+    finally:
+        get_settings.cache_clear()
+        app.dependency_overrides.clear()
+
+
 def test_owner_can_delete_one_line(tmp_path, monkeypatch):
     from app.config import get_settings
     from app.lesson.page import write_lesson_page

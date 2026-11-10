@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.auth import owner_id_from_authorization
+from app.beat_redraw import RedrawFailed, redraw_lesson_beat
 from app.beat_kind import parse_kind
 from app.config import get_settings
 from app.db import get_session
@@ -201,6 +202,36 @@ class BeatLayout(BaseModel):
     piece: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
     x: float = Field(ge=-50, le=50)
     y: float = Field(ge=-50, le=50)
+
+
+@router.post("/v1/lessons/{lesson_id}/beats/{beat_id}/redraw", response_model=LessonRecord)
+async def redraw_beat(
+    lesson_id: uuid.UUID,
+    beat_id: str,
+    body: BeatUpdate,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> LessonRecord | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    if lesson is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    if lesson.status == "rendering":
+        return JSONResponse(status_code=409, content={"error": "The lesson is being made. Wait until it finishes to draw this picture."})
+    if lesson.status == "exporting":
+        return JSONResponse(status_code=409, content={"error": "The video is being made. Wait until it finishes to draw this picture."})
+    if not lesson.html_file.strip():
+        return JSONResponse(status_code=409, content={"error": "Approve the script before drawing one picture."})
+    if not any(str(beat.get("id")) == beat_id for beat in lesson.beats):
+        return JSONResponse(status_code=404, content={"error": "Line not found"})
+    try:
+        saved = await redraw_lesson_beat(
+            store, lesson, beat_id, body.text, body.visual, body.kind, body.checkpoint
+        )
+    except RedrawFailed as exc:
+        return JSONResponse(status_code=400, content={"error": exc.message})
+    if saved.html_file.strip():
+        rewrite_lesson_page(saved.html_file, saved.beats)
+    return saved
 
 
 @router.patch("/v1/lessons/{lesson_id}/beats/{beat_id}/layout", response_model=LessonRecord)
