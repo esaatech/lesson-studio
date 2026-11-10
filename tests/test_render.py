@@ -125,6 +125,32 @@ def test_render_worker_saves_the_page_for_a_rendering_lesson(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_render_worker_logs_an_audio_failure(monkeypatch, caplog):
+    client, store = _client()
+    lesson = store.create("teacher-a", "Place value", [BEAT], status="rendering")
+
+    async def fake_audio(*_args, **_kwargs):
+        from app.elevenlabs import ElevenLabsError
+
+        raise ElevenLabsError(401, "Invalid ElevenLabs API key: Invalid API key", "b1")
+
+    monkeypatch.setattr("app.lesson_routes.verify_worker", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr("app.render_service.render_lesson_audio", fake_audio)
+    try:
+        with caplog.at_level("WARNING", logger="app.render_service"):
+            response = client.post(
+                "/internal/lessons/render",
+                json={"lesson_id": str(lesson.id)},
+                headers={"Authorization": "Bearer task"},
+            )
+        assert response.status_code == 500
+        assert "Invalid ElevenLabs API key" in response.json()["error"]
+        assert any("compose audio failed" in record.getMessage() for record in caplog.records)
+        assert store.get(lesson.id).status == "rendering"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_render_worker_rejects_a_missing_token():
     client, store = _client()
     lesson = store.create("teacher-a", "Place value", [BEAT], status="rendering")

@@ -1,12 +1,15 @@
 """ElevenLabs text-to-speech with character timestamps."""
 
 import base64
+import logging
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from app.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class ElevenLabsError(Exception):
@@ -103,6 +106,12 @@ async def synthesize(
             json={"text": text, "model_id": model_id},
         )
     except httpx.RequestError as exc:
+        logger.warning(
+            "elevenlabs unreachable beat=%s voice=%s error=%s",
+            beat_id,
+            voice_id,
+            exc.__class__.__name__,
+        )
         raise ElevenLabsError(
             502,
             f"Could not reach ElevenLabs: {exc.__class__.__name__}",
@@ -110,7 +119,16 @@ async def synthesize(
         ) from exc
 
     if response.status_code >= 400:
-        message = extract_error_message(response.status_code, _json_or_text(response))
+        payload = _json_or_text(response)
+        message = extract_error_message(response.status_code, payload)
+        logger.warning(
+            "elevenlabs http beat=%s voice=%s model=%s status=%s: %s",
+            beat_id,
+            voice_id,
+            model_id,
+            response.status_code,
+            message,
+        )
         raise ElevenLabsError(response.status_code, message, beat_id)
 
     try:

@@ -1,5 +1,6 @@
 """Draw each line and attach its spoken audio. The script queue does not do this."""
 
+import logging
 import shutil
 import uuid
 from pathlib import Path
@@ -14,6 +15,8 @@ from app.lesson_store import LessonRecord, LessonStore
 from app.schemas import BeatIn, LessonAudioRequest
 from app.script_queue import enqueue_render, is_last_attempt, uses_render_queue
 from app.service import render_lesson_audio
+
+logger = logging.getLogger(__name__)
 
 
 class RenderFailed(Exception):
@@ -38,23 +41,54 @@ async def run_queued_render(store: LessonStore, lesson_id: uuid.UUID, retry_coun
     lesson = store.get(lesson_id)
     if lesson is None or lesson.status != "rendering":
         status = "missing" if lesson is None else lesson.status
+        logger.warning("queued render skipped lesson=%s status=%s retry=%s", lesson_id, status, retry_count)
         return 200, {"status": status}
+    logger.info(
+        "queued render start lesson=%s retry=%s beats=%s last=%s",
+        lesson_id,
+        retry_count,
+        len(lesson.beats),
+        is_last_attempt(retry_count),
+    )
     try:
         saved = await compose_lesson(store, lesson)
     except RenderFailed as exc:
+        logger.warning("queued render failed lesson=%s retry=%s: %s", lesson_id, retry_count, exc.message)
         if is_last_attempt(retry_count):
             store.mark_status(lesson_id, "render_failed")
             return 200, {"status": "render_failed", "error": exc.message}
         return 500, {"error": exc.message}
+    except Exception:
+        logger.exception("queued render crashed lesson=%s retry=%s", lesson_id, retry_count)
+        message = "The lesson could not be made."
+        if is_last_attempt(retry_count):
+            store.mark_status(lesson_id, "render_failed")
+            return 200, {"status": "render_failed", "error": message}
+        return 500, {"error": message}
+    logger.info("queued render done lesson=%s status=%s", saved.id, saved.status)
     return 200, {"status": saved.status, "id": str(saved.id)}
 
 
 async def compose_lesson(store: LessonStore, lesson: LessonRecord) -> LessonRecord:
+    logger.info("compose audio start lesson=%s beats=%s", lesson.id, len(lesson.beats))
     try:
         audio = await render_lesson_audio(_audio_request(lesson))
-    except (ElevenLabsError, ValidationError) as exc:
-        message = getattr(exc, "message", None) or "A line could not be spoken."
-        raise RenderFailed(str(message), lesson.id) from exc
+    except ValidationError as exc:
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error.get('loc', ()))}:{error.get('type')}"
+            for error in exc.errors()[:8]
+        )
+        logger.warning("compose audio validation failed lesson=%s: %s", lesson.id, details or exc.__class__.__name__)
+        raise RenderFailed("A line could not be spoken.", lesson.id) from exc
+    except ElevenLabsError as exc:
+        logger.warning(
+            "compose audio failed lesson=%s beat=%s status=%s: %s",
+            lesson.id,
+            exc.beat_id or "-",
+            exc.status_code,
+            exc.message,
+        )
+        raise RenderFailed(exc.message, lesson.id) from exc
 
     directory = Path(get_settings().output_dir) / "lessons" / str(lesson.id)
     directory.mkdir(parents=True, exist_ok=True)
@@ -83,6 +117,7 @@ async def compose_lesson(store: LessonStore, lesson: LessonRecord) -> LessonReco
         store.save_beats(lesson.id, [dict(beat) for beat in beats])
         store.commit()
 
+    logger.info("compose pictures start lesson=%s", lesson.id)
     try:
         built = await build_lesson(
             {"id": str(lesson.id), "beats": payload},
@@ -90,8 +125,10 @@ async def compose_lesson(store: LessonStore, lesson: LessonRecord) -> LessonReco
             on_progress=persist_pictures,
         )
     except AIError as exc:
+        logger.warning("compose pictures failed lesson=%s: %s", lesson.id, exc.message)
         raise RenderFailed(exc.message, lesson.id) from exc
     except ValidationError as exc:
+        logger.warning("compose pictures invalid lesson=%s: %s", lesson.id, exc.__class__.__name__)
         raise RenderFailed("A picture could not be made for one line.", lesson.id) from exc
 
     pictures = {str(beat.get("id")): beat for beat in built.get("beats", [])}

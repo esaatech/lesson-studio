@@ -5,6 +5,7 @@ thin wrapper, so authentication can be added in front of the route later.
 """
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from pathlib import Path
@@ -25,7 +26,9 @@ async def render_lesson_audio(
     settings: Settings | None = None,
 ) -> LessonAudioResponse:
     settings = settings or get_settings()
-    if not settings.api_key():
+    key = settings.api_key()
+    if not key:
+        logger.warning("audio skipped: ELEVEN_KEY is not set")
         raise ElevenLabsError(500, "ELEVEN_KEY is not set", upstream=False)
 
     runtime = get_store().get()
@@ -33,6 +36,16 @@ async def render_lesson_audio(
     model_id = request.model_id or runtime.audio.model_id
     request_id = uuid.uuid4().hex
     folder = Path(settings.output_dir) / request_id
+    logger.info(
+        "audio start beats=%s voice=%s model=%s key_len=%s key_sha=%s host=%s output=%s",
+        len(request.beats),
+        voice_id,
+        model_id,
+        len(key),
+        hashlib.sha256(key.encode()).hexdigest()[:8],
+        settings.eleven_base_url,
+        settings.output_dir,
+    )
     folder.mkdir(parents=True, exist_ok=True)
 
     semaphore = asyncio.Semaphore(runtime.audio.concurrency)

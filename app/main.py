@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,9 +11,22 @@ from app.db import DatabaseError
 from app.lesson_routes import router as lesson_router
 from app.routes import router
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+_LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
+
+
+def _configure_app_logs() -> None:
+    logging.basicConfig(level=logging.INFO, format=_LOG_FORMAT, stream=sys.stdout, force=False)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    app_logger = logging.getLogger("app")
+    app_logger.setLevel(logging.INFO)
+    if not app_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        app_logger.addHandler(handler)
+
+
+_configure_app_logs()
 
 app = FastAPI(title="Lesson Studio", version="0.1.0")
 _origins = [origin.strip() for origin in get_settings().cors_origins.split(",") if origin.strip()]
