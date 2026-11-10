@@ -47,6 +47,32 @@ def layout_with_piece(beat: dict[str, Any], piece: str, x: float, y: float) -> d
     return {**beat, "layout": layout}
 
 
+def new_beat_id(beats: list[dict[str, Any]]) -> str:
+    taken = {str(beat.get("id") or "") for beat in beats}
+    for _ in range(8):
+        candidate = f"b{uuid.uuid4().hex[:10]}"
+        if candidate not in taken:
+            return candidate
+    return f"b{uuid.uuid4().hex}"
+
+
+def insert_beat_after(
+    beats: list[dict[str, Any]], after_id: str | None, beat: dict[str, Any]
+) -> list[dict[str, Any]] | None:
+    if not after_id:
+        return [*beats, beat]
+    placed: list[dict[str, Any]] = []
+    found = False
+    for item in beats:
+        placed.append(item)
+        if str(item.get("id")) == after_id:
+            placed.append(beat)
+            found = True
+    if not found:
+        return None
+    return placed
+
+
 def retime_beats(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cursor = 0.0
     placed: list[dict[str, Any]] = []

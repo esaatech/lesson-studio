@@ -345,13 +345,29 @@ def rewrite_lesson_page(html_file: str, beats: list[dict] | None = None) -> None
         record = {"beats": [], "total_duration": 0}
     existing = {str(item.get("id")): dict(item) for item in record.get("beats") or []}
     source = beats if beats is not None else list(record.get("beats") or [])
-    merged = [_merge_saved_beat(directory, existing.get(str(beat.get("id"))), beat) for beat in source]
+    merged = []
+    for beat in source:
+        previous = existing.get(str(beat.get("id")))
+        item = _merge_saved_beat(directory, previous, beat)
+        # A line added after the page exists has no speech and no picture yet.
+        if previous is None and not _has_picture_or_speech(item):
+            continue
+        merged.append(item)
     if not merged:
         return
     total = 0.0
     for beat in merged:
         total = max(total, float(beat.get("end") or 0) + float(beat.get("pause_after") or 0))
     write_lesson_page(directory.name, merged, total or float(record.get("total_duration") or 0), directory)
+
+
+def _has_picture_or_speech(beat: dict) -> bool:
+    if str(beat.get("audio_file") or "").strip():
+        return True
+    if beat.get("component"):
+        return True
+    settings = beat.get("settings")
+    return isinstance(settings, dict) and bool(settings)
 
 
 def _merge_saved_beat(directory: Path, previous: dict | None, incoming: dict) -> dict:

@@ -67,6 +67,27 @@ def test_a_dragged_place_is_written_into_the_page(tmp_path):
     assert path.read_text() == html
 
 
+def test_rewrite_leaves_a_new_line_off_the_page_until_it_is_spoken(tmp_path):
+    from app.lesson.page import rewrite_lesson_page
+
+    placed, total = place_beats([_beat("b1", 3.0)])
+    placed[0]["text"] = "Welcome."
+    placed[0]["audio_file"] = "b1.mp3"
+    path = write_lesson_page("welcome", placed, total, tmp_path)
+
+    rewrite_lesson_page(
+        str(path),
+        [
+            placed[0],
+            {"id": "b2", "text": "Park is a place.", "visual": "A park.", "kind": "wording"},
+        ],
+    )
+
+    saved = json.loads((tmp_path / "lesson.json").read_text())
+    assert [beat["id"] for beat in saved["beats"]] == ["b1"]
+    assert "Park is a place." not in path.read_text()
+
+
 def test_rewrite_keeps_picture_settings_when_the_database_omits_them(tmp_path):
     from app.lesson.page import rewrite_lesson_page
 

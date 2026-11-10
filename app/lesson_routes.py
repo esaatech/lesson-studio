@@ -16,7 +16,14 @@ from app.config import get_settings
 from app.db import get_session
 from app.export_service import ExportFailed, write_export
 from app.lesson.page import rewrite_lesson_page
-from app.lesson_store import LessonCreate, LessonRecord, LessonStore, SqlLessonStore
+from app.lesson_store import (
+    LessonCreate,
+    LessonRecord,
+    LessonStore,
+    SqlLessonStore,
+    insert_beat_after,
+    new_beat_id,
+)
 from app.render_service import RenderFailed, run_queued_render, write_render
 from app.script_queue import CloudTaskError, verify_worker
 from app.script_service import ScriptFailed, run_queued_script, write_script
@@ -121,6 +128,52 @@ class BeatUpdate(BaseModel):
     @classmethod
     def kind_is_current(cls, value: object) -> str:
         return parse_kind(value, "concept") or "concept"
+
+
+class BeatCreate(BeatUpdate):
+    after: str | None = None
+
+    @field_validator("after")
+    @classmethod
+    def after_names_a_line(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+@router.post("/v1/lessons/{lesson_id}/beats", response_model=LessonRecord, status_code=201)
+def create_beat(
+    lesson_id: uuid.UUID,
+    body: BeatCreate,
+    owner_id: str = Depends(require_owner),
+    store: LessonStore = Depends(get_lesson_store),
+) -> LessonRecord | JSONResponse:
+    lesson = store.get_for_owner(owner_id, lesson_id)
+    if lesson is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    if lesson.status == "rendering":
+        return JSONResponse(status_code=409, content={"error": "The lesson is being made. Wait until it finishes to add a line."})
+    if lesson.status == "exporting":
+        return JSONResponse(status_code=409, content={"error": "The video is being made. Wait until it finishes to add a line."})
+    if len(lesson.beats) >= 100:
+        return JSONResponse(status_code=409, content={"error": "A lesson can have up to 100 lines."})
+    beat = {
+        "id": new_beat_id(lesson.beats),
+        "text": body.text,
+        "visual": body.visual.strip(),
+        "kind": body.kind,
+        "checkpoint": body.checkpoint,
+    }
+    placed = insert_beat_after(lesson.beats, body.after, beat)
+    if placed is None:
+        return JSONResponse(status_code=404, content={"error": "Line not found"})
+    saved = store.save_beats(lesson_id, placed)
+    if saved is None:
+        return JSONResponse(status_code=404, content={"error": "Lesson not found"})
+    if saved.html_file.strip():
+        rewrite_lesson_page(saved.html_file, saved.beats)
+    return saved
 
 
 @router.patch("/v1/lessons/{lesson_id}/beats/{beat_id}", response_model=LessonRecord)

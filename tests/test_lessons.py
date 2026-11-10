@@ -250,6 +250,103 @@ def test_owner_can_save_where_the_picture_was_dragged(tmp_path, monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_owner_can_add_a_line_below_another(tmp_path, monkeypatch):
+    from app.config import get_settings
+    from app.lesson.page import write_lesson_page
+
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    store = MemoryLessonStore()
+    app.dependency_overrides[require_owner] = lambda: "teacher-a"
+    app.dependency_overrides[get_lesson_store] = lambda: store
+    client = TestClient(app)
+    try:
+        beats = [
+            {
+                "id": "b1",
+                "text": "Welcome.",
+                "visual": "A welcome badge.",
+                "kind": "intro",
+                "component": "title-card",
+                "settings": {"title": "Welcome"},
+                "audio_file": "b1.mp3",
+                "start": 0,
+                "end": 1.2,
+                "duration": 1.2,
+                "pause_after": 0,
+            },
+            {
+                "id": "b2",
+                "text": "A noun names a person.",
+                "visual": "A person.",
+                "kind": "concept",
+                "component": "highlight-words",
+                "settings": {"sentence": "A noun names a person."},
+                "audio_file": "b2.mp3",
+                "start": 1.2,
+                "end": 3.0,
+                "duration": 1.8,
+                "pause_after": 0,
+            },
+        ]
+        lesson = store.create("teacher-a", "Nouns", beats, status="rendered")
+        page = write_lesson_page(str(lesson.id), beats, 3.0, tmp_path / "lessons" / str(lesson.id))
+        store.save_render(lesson.id, beats, str(page.parent), str(page))
+        missing = client.post(
+            f"/v1/lessons/{lesson.id}/beats",
+            json={"after": "missing", "text": "Park is a place.", "visual": "A park.", "kind": "concept"},
+        )
+        assert missing.status_code == 404
+        added = client.post(
+            f"/v1/lessons/{lesson.id}/beats",
+            json={
+                "after": "b1",
+                "text": "Park is a place.",
+                "visual": "A park.",
+                "kind": "wording",
+                "checkpoint": True,
+            },
+        )
+        assert added.status_code == 201
+        saved_beats = added.json()["beats"]
+        assert [beat["text"] for beat in saved_beats] == [
+            "Welcome.",
+            "Park is a place.",
+            "A noun names a person.",
+        ]
+        created = saved_beats[1]
+        assert created["visual"] == "A park."
+        assert created["kind"] == "wording"
+        assert created["checkpoint"] is True
+        assert "audio_file" not in created
+        assert "component" not in created
+        assert saved_beats[0]["start"] == 0
+        assert saved_beats[2]["start"] == 1.2
+        appended = client.post(
+            f"/v1/lessons/{lesson.id}/beats",
+            json={"text": "Courage is an idea.", "visual": "Courage.", "kind": "concept"},
+        )
+        assert appended.status_code == 201
+        assert appended.json()["beats"][-1]["text"] == "Courage is an idea."
+        page_beats = json.loads((tmp_path / "lessons" / str(lesson.id) / "lesson.json").read_text())["beats"]
+        assert [beat["id"] for beat in page_beats] == ["b1", "b2"]
+        html = (tmp_path / "lessons" / str(lesson.id) / "index.html").read_text()
+        assert "Park is a place." not in html
+        assert "Courage is an idea." not in html
+        assert "Welcome." in html
+        busy = store.mark_status(lesson.id, "rendering")
+        assert busy is not None
+        refused = client.post(
+            f"/v1/lessons/{lesson.id}/beats",
+            json={"text": "Too soon.", "visual": "Wait."},
+        )
+        assert refused.status_code == 409
+        assert refused.json() == {"error": "The lesson is being made. Wait until it finishes to add a line."}
+    finally:
+        get_settings.cache_clear()
+        app.dependency_overrides.clear()
+
+
 def test_owner_can_delete_one_line(tmp_path, monkeypatch):
     from app.config import get_settings
     from app.lesson.page import write_lesson_page
