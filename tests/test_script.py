@@ -139,16 +139,31 @@ def test_a_script_may_have_one_hundred_short_lines():
     raise AssertionError("expected more than 100 lines to be rejected")
 
 
-def test_one_line_cannot_pack_a_paragraph():
-    from pydantic import ValidationError
-
+def test_a_long_line_is_shortened_instead_of_failing_the_script():
     from app.script_draft import DraftBeat
 
-    try:
-        DraftBeat(id="b1", text="x" * 221, kind="concept", visual="One picture.")
-    except ValidationError:
-        return
-    raise AssertionError("expected a 221 character line to be rejected")
+    beat = DraftBeat(
+        id="1. singular",
+        text=("Singular means one. " * 20),
+        kind="definition",
+        visual="One picture.",
+    )
+    assert len(beat.text) <= 220
+    assert beat.text.endswith("one.") or beat.text.endswith("Singular")
+    assert beat.kind == "concept"
+    assert beat.id == "b1singular"
+
+
+def test_repeated_line_ids_are_made_unique():
+    from app.script_draft import DraftScript
+
+    script = DraftScript(
+        beats=[
+            {"id": "same", "text": "One.", "kind": "wording", "visual": "One."},
+            {"id": "same", "text": "Two.", "kind": "wording", "visual": "Two."},
+        ]
+    )
+    assert [beat.id for beat in script.beats] == ["same", "b2"]
 
 
 def test_each_named_section_may_open_with_an_intro():

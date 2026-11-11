@@ -55,7 +55,7 @@ class SettingsPatch(BaseModel):
 
 SCRIPT_DRAFTER_PROMPT = """You draft a lesson as beats for a teacher.
 Return JSON only. Each beat has id, text, kind, visual, and checkpoint.
-text is one spoken sentence a teacher would say in one breath. One breath is one idea. A definition is one beat. An example is another beat.
+text is one spoken sentence a teacher would say in one breath, at most 180 characters. One breath is one idea. A definition is one beat. An example is another beat.
 kind is intro, wording, or concept. The job of the line, not a layout name.
 intro names what is starting. The first beat may be one intro that names the whole lesson. When the source is divided into named sections, begin each section with its own intro that names that section, before any teaching in the section. visual is that name, optional subtitle, optional one emblem. Do not explain an idea on an intro.
 wording is for when students should look at the language itself: a word, a sentence, an example paragraph, syllables, a line of code, a digit in place value. visual is the words they should see. It can be the example on the board while text is what the teacher says about it. Use wording when no diagram is needed.
