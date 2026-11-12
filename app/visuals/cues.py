@@ -212,6 +212,14 @@ def cues_for(component: str, settings: dict, words: list[WordTime], duration: fl
         return _reveal_cues(_concept_scene_phrases(settings), words, length)
     if component == "highlight-words":
         return _reveal_cues([str(item) for item in settings.get("emphasis") or []], words, length)
+    if component == "numbered-list":
+        return _reveal_cues([str(item) for item in settings.get("items") or []], words, length)
+    if component == "word-table":
+        phrases = []
+        for row in settings.get("rows") or []:
+            if isinstance(row, list):
+                phrases.append(" ".join(str(cell) for cell in row))
+        return _reveal_cues(phrases, words, length)
     if component == "label-callout":
         return _reveal_cues(_part_names(list(settings.get("parts") or [])), words, length)
     if component == "path-trace":

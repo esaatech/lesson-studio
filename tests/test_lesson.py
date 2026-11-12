@@ -50,6 +50,7 @@ def test_lesson_page_lists_every_beat(tmp_path):
     saved = json.loads((tmp_path / "lesson.json").read_text())
     assert saved["total_duration"] == 10.296
     assert "studio-layout" in html
+    assert "studio-edit" in html
     assert "applyLayout" in html
 
 

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -26,8 +27,30 @@ _RETRYABLE = frozenset({"ModelRateLimitError", "ModelUnavailableError"})
 _RETRY_WAITS = (20.0, 40.0, 60.0, 60.0, 60.0)
 
 
+def _piece_count(visual: str) -> int:
+    """How many examples, questions, or types On screen already lists."""
+    text = (visual or "").strip()
+    if not text:
+        return 0
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) > 1:
+        return len(lines)
+    arrows = text.count("→")
+    if arrows >= 2:
+        return arrows
+    numbered = re.findall(r"(?:^|\s)\d+[\.\)]\s+\S", text)
+    if len(numbered) >= 2:
+        return len(numbered)
+    return 1
+
+
 def apply_on_screen_words(beat: VisualBeat, choice: VisualChoice) -> VisualChoice:
     """Wording slides use On screen only. Spoken text is never copied onto the board."""
+    if choice.component in {"numbered-list", "word-table"} and _piece_count(beat.visual) > 5:
+        sentence = (beat.visual or "").strip()[:400]
+        return CHOICE_ADAPTER.validate_python(
+            {"component": "kinetic-text", "settings": {"sentence": sentence, "motion": "highlight"}}
+        )
     if choice.component not in {"kinetic-text", "highlight-words"}:
         return choice
     sentence = (beat.visual or "").strip()[:400]

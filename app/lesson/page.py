@@ -120,6 +120,10 @@ _PAGE = """<!DOCTYPE html>
       line.textContent = beat.text || beat.id;
       button.append(when, line);
       button.addEventListener("click", () => {{
+        if (button.classList.contains("on")) {{
+          window.parent.postMessage({{ type: "studio-edit", beatId: beat.id }}, "*");
+          return;
+        }}
         lessonTime = beat.start;
         lastTick = null;
         player.dataset.beat = "";

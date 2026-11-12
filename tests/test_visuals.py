@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -640,6 +642,89 @@ def test_picture_rate_limit_is_retried(monkeypatch, tmp_path):
     assert calls["n"] == 2
     assert visual.component == "shape-picture"
     assert visual.id == "b16"
+
+
+def test_a_wording_table_and_numbered_list_hold_at_most_five():
+    from pydantic import TypeAdapter
+
+    from app.runtime_settings import SCRIPT_DRAFTER_PROMPT
+    from app.visuals.components import choice_type_for
+    from app.visuals.cues import cues_for
+    from app.visuals.schema import WordTime
+
+    wording = TypeAdapter(choice_type_for("wording"))
+    table = {
+        "component": "word-table",
+        "settings": {
+            "title": "Plurals",
+            "headers": ["Word", "Plural", "Rule"],
+            "rows": [
+                ["hero", "heroes", "-es"],
+                ["photo", "photos", "-s"],
+                ["tomato", "tomatoes", "-es"],
+                ["radio", "radios", "-s"],
+                ["city", "cities", "-ies"],
+            ],
+        },
+    }
+    choice = wording.validate_python(table)
+    assert choice.component == "word-table"
+    assert len(choice.settings.rows) == 5
+
+    too_many = {
+        "component": "word-table",
+        "settings": {
+            "headers": ["Word", "Plural"],
+            "rows": [["one", "ones"]] * 6,
+        },
+    }
+    with pytest.raises(ValidationError):
+        wording.validate_python(too_many)
+
+    numbered = {
+        "component": "numbered-list",
+        "settings": {"items": ["heroes", "photos", "tomatoes", "radios", "cities"]},
+    }
+    assert wording.validate_python(numbered).component == "numbered-list"
+    with pytest.raises(ValidationError):
+        wording.validate_python({"component": "numbered-list", "settings": {"items": ["a", "b", "c", "d", "e", "f"]}})
+    with pytest.raises(ValidationError):
+        TypeAdapter(choice_type_for("concept")).validate_python(table)
+
+    words = [
+        WordTime(word="Heroes", start=0.4, end=0.9),
+        WordTime(word="photos", start=1.5, end=2.0),
+    ]
+    cues = cues_for("word-table", table["settings"], words, 4)
+    assert cues["reveal_0"] == 0.4
+    assert cues["reveal_1"] == 1.5
+
+    beat = VisualBeat(
+        id="plurals",
+        text="Heroes and photos.",
+        visual="hero → heroes\nphoto → photos",
+        duration=4,
+        words=words,
+    )
+    visual = resolve_choice(beat, CHOICE_ADAPTER.validate_python(table))
+    assert visual.component == "word-table"
+    assert visual.end_state["rows"][0] == ["hero", "heroes", "-es"]
+
+    crowded = VisualBeat(
+        id="crowded",
+        text="Here are the plurals.",
+        visual="hero → heroes photo → photos tomato → tomatoes radio → radios city → cities box → boxes",
+    )
+    fallback = resolve_choice(crowded, CHOICE_ADAPTER.validate_python(numbered))
+    assert fallback.component == "kinetic-text"
+    assert "box → boxes" in fallback.settings["sentence"]
+
+    assert "at most 5" in SCRIPT_DRAFTER_PROMPT
+    assert "examples, questions, types, or other pieces of the same kind" in SCRIPT_DRAFTER_PROMPT
+    assert "row" not in SCRIPT_DRAFTER_PROMPT.lower()
+    assert "use word-table when they fall into columns" in VISUAL_GENERATOR_PROMPT
+    assert "numbered-list when they are a short sequence" in VISUAL_GENERATOR_PROMPT
+    assert "highlight-words is for that same single sentence" in VISUAL_GENERATOR_PROMPT
 
 
 def test_picture_rate_limit_message_names_the_beat():

@@ -59,6 +59,15 @@ STAGE_CSS = """
     .kinetic span.on { background: #ffe08a; }
     .kinetic.reveal span.wait { opacity: 0.18; }
     .concept-svg { width: 100%; height: auto; max-height: 420px; display: block; }
+    .word-table, .number-list { width: 100%; }
+    .word-table .scene-title, .number-list .scene-title { margin: 0 0 10px; font-size: 22px; }
+    .word-table table { width: 100%; border-collapse: collapse; font-size: 22px; }
+    .word-table th, .word-table td { padding: 8px 14px; text-align: left; border-bottom: 2px solid #e6e0d6; vertical-align: middle; line-height: 1.25; }
+    .word-table th { font-family: sans-serif; font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; color: #5c564c; font-weight: 600; }
+    .word-table tr:last-child td { border-bottom: none; }
+    .number-list ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .number-list li { display: flex; align-items: baseline; gap: 14px; font-size: 26px; line-height: 1.25; }
+    .number-list .n { width: 32px; flex: none; color: #2f6f4e; font-weight: 700; }
 """
 
 STAGE_SCRIPT = r"""
@@ -232,6 +241,29 @@ STAGE_SCRIPT = r"""
         </div>
         <div class="label" data-drag="label" style="opacity:${span(t, cues.label_start ?? duration * 0.72, cues.label_end ?? duration)}">${escapeHtml(settings.label)}</div>
         <div class="badge" data-drag="badge" style="opacity:${settings.badge ? span(t, cues.badge_start ?? duration * 0.84, cues.badge_end ?? duration) : 0}">${escapeHtml(settings.badge || "")}</div>`;
+    }
+
+    function renderNumberedList(settings, t, beat) {
+      const items = settings.items || [];
+      const title = settings.title ? `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2>` : "";
+      const list = items.map((item, index) => {
+        const on = shown(t, beat, index, items.length) ? 1 : 0.28;
+        return `<li data-drag="item-${index}" style="opacity:${on}"><span class="n">${index + 1}</span><span>${escapeHtml(item)}</span></li>`;
+      }).join("");
+      stage.innerHTML = `<div class="number-list">${title}<ol>${list}</ol></div>`;
+    }
+
+    function renderWordTable(settings, t, beat) {
+      const headers = settings.headers || [];
+      const rows = settings.rows || [];
+      const title = settings.title ? `<h2 class="scene-title" data-drag="title">${escapeHtml(settings.title)}</h2>` : "";
+      const head = `<tr>${headers.map((cell) => `<th>${escapeHtml(cell)}</th>`).join("")}</tr>`;
+      const body = rows.map((row, index) => {
+        const on = shown(t, beat, index, rows.length) ? 1 : 0.28;
+        const cells = (Array.isArray(row) ? row : []).map((cell) => `<td>${escapeHtml(cell)}</td>`).join("");
+        return `<tr data-drag="row-${index}" style="opacity:${on}">${cells}</tr>`;
+      }).join("");
+      stage.innerHTML = `<div class="word-table">${title}<table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
     }
 
     function renderHighlightWords(settings, t, beat) {
@@ -567,6 +599,8 @@ STAGE_SCRIPT = r"""
       "concept-scene": renderConceptScene,
       "digit-slide": renderDigitSlide,
       "highlight-words": renderHighlightWords,
+      "numbered-list": renderNumberedList,
+      "word-table": renderWordTable,
       "label-callout": renderLabelCallout,
       "path-trace": renderPathTrace,
       "stroke-diagram": renderStrokeDiagram,

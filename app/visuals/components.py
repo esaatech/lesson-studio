@@ -3,7 +3,7 @@
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter, field_validator
+from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
 from app.beat_kind import parse_kind
 from app.visuals.icons import ICON_LIST, ICON_NAMES
@@ -116,6 +116,67 @@ class KineticTextSettings(BaseModel):
     motion: Literal["highlight", "reveal"] = Field(
         description="highlight lights spoken words in a visible sentence. reveal brings each word in as it is said.",
     )
+
+
+class WordTableSettings(BaseModel):
+    title: str = Field(
+        default="",
+        max_length=48,
+        description="Optional title above the table. Leave empty when the column names are enough.",
+    )
+    headers: list[str] = Field(
+        min_length=2,
+        max_length=3,
+        description="Two or three column names. One or two words each.",
+    )
+    rows: list[list[str]] = Field(
+        min_length=1,
+        max_length=5,
+        description="At most 5 rows. Each row has one short cell for every column, in header order. Use a table only when this beat has 5 or fewer pieces.",
+    )
+
+    @field_validator("headers")
+    @classmethod
+    def headers_are_short(cls, value: list[str]) -> list[str]:
+        cleaned = [" ".join(item.split()) for item in value]
+        if any(not item or len(item) > 24 for item in cleaned):
+            raise ValueError("each column name is one or two short words")
+        return cleaned
+
+    @model_validator(mode="after")
+    def rows_match_columns(self):
+        width = len(self.headers)
+        cleaned_rows: list[list[str]] = []
+        for row in self.rows:
+            cleaned = [" ".join(cell.split()) for cell in row]
+            if len(cleaned) != width:
+                raise ValueError("each row needs one cell for every column")
+            if any(not cell or len(cell) > 40 for cell in cleaned):
+                raise ValueError("each cell is a few words")
+            cleaned_rows.append(cleaned)
+        self.rows = cleaned_rows
+        return self
+
+
+class NumberedListSettings(BaseModel):
+    title: str = Field(
+        default="",
+        max_length=48,
+        description="Optional title. Leave empty when the numbers are enough.",
+    )
+    items: list[str] = Field(
+        min_length=1,
+        max_length=5,
+        description="At most 5 short lines, in order. One line is a few words. Use a numbered list only when this beat has 5 or fewer pieces.",
+    )
+
+    @field_validator("items")
+    @classmethod
+    def items_are_short(cls, value: list[str]) -> list[str]:
+        cleaned = [" ".join(item.split()) for item in value]
+        if any(not item or len(item) > 80 for item in cleaned):
+            raise ValueError("each line is a few words")
+        return cleaned
 
 
 IconName = Literal[*ICON_NAMES]
@@ -308,6 +369,16 @@ class KineticTextChoice(BaseModel):
     settings: KineticTextSettings
 
 
+class WordTableChoice(BaseModel):
+    component: Literal["word-table"]
+    settings: WordTableSettings
+
+
+class NumberedListChoice(BaseModel):
+    component: Literal["numbered-list"]
+    settings: NumberedListSettings
+
+
 class ConceptSceneChoice(BaseModel):
     component: Literal["concept-scene"]
     settings: ConceptSceneSettings
@@ -341,7 +412,7 @@ class ProcessLoopChoice(BaseModel):
 IntroChoice = TitleCardChoice
 
 WordingChoice = Annotated[
-    KineticTextChoice | HighlightWordsChoice | DigitSlideChoice | CodeLineChoice,
+    KineticTextChoice | HighlightWordsChoice | NumberedListChoice | WordTableChoice | DigitSlideChoice | CodeLineChoice,
     Field(discriminator="component"),
 ]
 
@@ -374,7 +445,9 @@ VisualChoice = Annotated[
     | StrokeDiagramChoice
     | ShapePictureChoice
     | ArrowLinkChoice
-    | BeforeAfterChoice,
+    | BeforeAfterChoice
+    | NumberedListChoice
+    | WordTableChoice,
     Field(discriminator="component"),
 ]
 
@@ -390,6 +463,8 @@ SETTING_MODELS = {
     "process-loop": ProcessLoopSettings,
     "digit-slide": DigitSlideSettings,
     "highlight-words": HighlightWordsSettings,
+    "numbered-list": NumberedListSettings,
+    "word-table": WordTableSettings,
     "path-trace": PathTraceSettings,
     "code-line": CodeLineSettings,
     "measure": MeasureSettings,
@@ -403,9 +478,11 @@ SETTING_MODELS = {
 
 USE_WHEN = {
     "title-card": "Intro only. Name the lesson, or the section that is starting. Large title, optional subtitle, optional one emblem. Not an explanation.",
-    "kinetic-text": "Wording. Students see the On screen text only. Empty On screen is blank. To show the spoken line, it must be copied into On screen.",
+    "kinetic-text": "Wording. One sentence. Students see the On screen text only. Empty On screen is blank. To show the spoken line, it must be copied into On screen. Also use this when the beat has more than 5 pieces, so nothing is left off the frame.",
     "digit-slide": "Wording. Only when one digit moves between place-value columns.",
-    "highlight-words": "Wording. Students see the On screen sentence only. Emphasis marks spoken words that already appear on screen.",
+    "highlight-words": "Wording. One sentence. Students see the On screen sentence only. Emphasis marks spoken words that already appear on screen. Also use this when the beat has more than 5 pieces, so nothing is left off the frame.",
+    "numbered-list": "Wording. Use this when On screen is a short sequence of examples, questions, types, or other pieces of the same kind, and there are 5 or fewer. Do not use this when the beat has more than 5 pieces.",
+    "word-table": "Wording. Use this when those pieces fall into columns, such as a word, its plural, and the rule, and there are 5 or fewer. At most 5 rows and 3 columns. Do not use this when the beat has more than 5 pieces.",
     "code-line": "Wording. One line of code, with the important tokens marked.",
     "label-plus-group": "Concept. One word stands for many things. A label, a ring of the same icon, optional other examples. English flock, math set, science species.",
     "compare-two": "Concept. Two things side by side. Noun vs verb, odd vs even, plant vs animal cell.",
@@ -428,7 +505,7 @@ CONCEPT_COMPONENTS = (
 
 COMPONENTS_FOR_KIND = {
     "intro": ("title-card",),
-    "wording": ("kinetic-text", "highlight-words", "digit-slide", "code-line"),
+    "wording": ("kinetic-text", "highlight-words", "numbered-list", "word-table", "digit-slide", "code-line"),
     "concept": CONCEPT_COMPONENTS,
 }
 
@@ -541,6 +618,10 @@ def end_state_for(choice: VisualChoice) -> dict:
             "sentence": settings.sentence,
             "emphasized": settings.emphasis,
         }
+    if isinstance(choice, NumberedListChoice):
+        return {"component": "numbered-list", "items": settings.items}
+    if isinstance(choice, WordTableChoice):
+        return {"component": "word-table", "headers": settings.headers, "rows": settings.rows}
     if isinstance(choice, LabelCalloutChoice):
         return {
             "component": "label-callout",
