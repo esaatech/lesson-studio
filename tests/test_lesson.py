@@ -52,6 +52,10 @@ def test_lesson_page_lists_every_beat(tmp_path):
     assert "studio-layout" in html
     assert "studio-edit" in html
     assert "applyLayout" in html
+    assert "player.dataset.ready = beat.id" in html
+    assert "lessonTime = Math.min(beat.end, beat.start + heard)" in html
+    assert "const offset = local" in html
+    assert "heard + 0.02 >= lessonTime" not in html
 
 
 def test_a_dragged_place_is_written_into_the_page(tmp_path):

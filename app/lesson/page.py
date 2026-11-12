@@ -84,24 +84,28 @@ _PAGE = """<!DOCTYPE html>
         if (!player.paused) player.pause();
         return;
       }}
-      // play() on an ended clip starts it again from the beginning.
-      if (player.dataset.beat === beat.id && player.ended) return;
       if (player.dataset.beat !== beat.id) {{
         const token = ++playToken;
+        const offset = local;
         let started = false;
         const start = () => {{
           if (started || token !== playToken || !playing) return;
-          const at = Math.max(0, lessonTime - beat.start);
-          if (at >= clip - 0.01) return;
+          if (offset >= clip - 0.01) return;
           started = true;
-          try {{ player.currentTime = at; }} catch (err) {{}}
+          player.dataset.ready = beat.id;
+          try {{ player.currentTime = offset; }} catch (err) {{}}
           const pending = player.play();
           if (pending && pending.catch) pending.catch(() => {{}});
         }};
         player.dataset.beat = beat.id;
+        player.dataset.ready = "";
         player.addEventListener("loadedmetadata", start, {{ once: true }});
         player.src = beat.audio_file;
         return;
+      }}
+      const heard = player.currentTime || 0;
+      if (player.ended && heard > 0.05 && heard < clip - 0.2) {{
+        try {{ player.currentTime = heard; }} catch (err) {{}}
       }}
       if (player.paused) {{
         const pending = player.play();
@@ -275,16 +279,14 @@ _PAGE = """<!DOCTYPE html>
         const beat = beatAt(lessonTime);
         const local = lessonTime - beat.start;
         const clip = beat.duration || 0;
-        const same = player.dataset.beat === beat.id;
-        const ended = same && player.ended;
-        const inSpeech = Boolean(beat.audio_file) && local < clip - 0.01 && !ended;
-        if (inSpeech) {{
+        const ready = player.dataset.beat === beat.id && player.dataset.ready === beat.id;
+        const heard = ready ? (player.currentTime || 0) : 0;
+        const started = heard > 0.02;
+        const done = !beat.audio_file || (started && (heard >= clip - 0.08 || (player.ended && heard >= clip - 0.2)));
+        if (!done && beat.audio_file && local < clip) {{
           speakAt(lessonTime);
-          const heard = beat.start + (player.currentTime || 0);
-          if (same && !player.paused && !player.ended && heard + 0.02 >= lessonTime && heard < beat.end) {{
-            lessonTime = heard;
-          }} else if (lastTick !== null) {{
-            lessonTime += (now - lastTick) / 1000;
+          if (ready && !player.paused && started) {{
+            lessonTime = Math.min(beat.end, beat.start + heard);
           }}
         }} else {{
           if (!player.paused) player.pause();
