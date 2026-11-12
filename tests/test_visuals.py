@@ -722,9 +722,45 @@ def test_a_wording_table_and_numbered_list_hold_at_most_five():
     assert "at most 5" in SCRIPT_DRAFTER_PROMPT
     assert "examples, questions, types, or other pieces of the same kind" in SCRIPT_DRAFTER_PROMPT
     assert "row" not in SCRIPT_DRAFTER_PROMPT.lower()
-    assert "use word-table when they fall into columns" in VISUAL_GENERATOR_PROMPT
-    assert "numbered-list when they are a short sequence" in VISUAL_GENERATOR_PROMPT
-    assert "highlight-words is for that same single sentence" in VISUAL_GENERATOR_PROMPT
+    assert "Pieces that share the same result share one row" in VISUAL_GENERATOR_PROMPT
+    assert "numbered-list when they are only a sequence" in VISUAL_GENERATOR_PROMPT
+    assert "only for one sentence that is not a set of pieces" in VISUAL_GENERATOR_PROMPT
+    assert "including a label the spoken line does not repeat word for word" in VISUAL_GENERATOR_PROMPT
+    assert "On-screen words must be words that are actually spoken" not in VISUAL_GENERATOR_PROMPT
+
+
+def test_picture_choice_sees_the_line_and_not_the_word_times():
+    from app.visuals.generate import _user_prompt
+    from app.visuals.schema import WordTime
+
+    beat = VisualBeat(
+        id="signals",
+        text="A, an, and one point to singular.",
+        visual="Singular signals: a, an, one",
+        kind="wording",
+        duration=4.2,
+        previous_end_state={"component": "highlight-words", "sentence": "Nouns name things."},
+        words=[WordTime(word="one", start=1.25, end=1.6)],
+        audio_file="signals.mp3",
+    )
+    prompt = _user_prompt(beat)
+
+    assert "wording" in prompt
+    assert "Singular signals: a, an, one" in prompt
+    assert "A, an, and one point to singular." in prompt
+    assert "4.2" in prompt
+    assert "Nouns name things." not in prompt
+    assert "signals.mp3" not in prompt
+    assert "1.25" not in prompt
+
+    choice = CHOICE_ADAPTER.validate_python(
+        {
+            "component": "highlight-words",
+            "settings": {"sentence": "Singular signals: a, an, one", "emphasis": ["one"]},
+        }
+    )
+    visual = resolve_choice(beat, choice)
+    assert visual.cues["reveal_0"] == 1.25
 
 
 def test_picture_rate_limit_message_names_the_beat():

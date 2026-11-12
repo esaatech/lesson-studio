@@ -1,6 +1,7 @@
 """Ask the active model for one component, then record the end state in code."""
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -183,8 +184,7 @@ def _visual_error(beat: VisualBeat, exc: BaseException) -> str:
 
 
 def _user_prompt(beat: VisualBeat) -> str:
+    """Kind, spoken line, and On screen choose the template. Word times are applied after."""
     kind = parse_kind(beat.kind) or "unknown"
-    return (
-        f"Choose a component for this beat. The beat kind is {kind}.\n"
-        f"{beat.model_dump_json(indent=2)}"
-    )
+    shown = beat.model_dump(exclude={"words", "audio_file", "previous_end_state"})
+    return f"Choose a component for this beat. The beat kind is {kind}.\n{json.dumps(shown, indent=2)}"

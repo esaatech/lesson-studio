@@ -478,11 +478,11 @@ SETTING_MODELS = {
 
 USE_WHEN = {
     "title-card": "Intro only. Name the lesson, or the section that is starting. Large title, optional subtitle, optional one emblem. Not an explanation.",
-    "kinetic-text": "Wording. One sentence. Students see the On screen text only. Empty On screen is blank. To show the spoken line, it must be copied into On screen. Also use this when the beat has more than 5 pieces, so nothing is left off the frame.",
+    "kinetic-text": "Wording. Only one sentence that is not a set of pieces. Students see the On screen text only. Empty On screen is blank. Also use this when a table or list would need more than 5 rows.",
     "digit-slide": "Wording. Only when one digit moves between place-value columns.",
-    "highlight-words": "Wording. One sentence. Students see the On screen sentence only. Emphasis marks spoken words that already appear on screen. Also use this when the beat has more than 5 pieces, so nothing is left off the frame.",
-    "numbered-list": "Wording. Use this when On screen is a short sequence of examples, questions, types, or other pieces of the same kind, and there are 5 or fewer. Do not use this when the beat has more than 5 pieces.",
-    "word-table": "Wording. Use this when those pieces fall into columns, such as a word, its plural, and the rule, and there are 5 or fewer. At most 5 rows and 3 columns. Do not use this when the beat has more than 5 pieces.",
+    "highlight-words": "Wording. Only one sentence that is not a set of pieces. Emphasis marks spoken words that already appear on screen. Also use this when a table or list would need more than 5 rows.",
+    "numbered-list": "Wording. A short sequence of examples, questions, types, or other pieces of the same kind, with no second column. At most 5 lines.",
+    "word-table": "Wording. Pieces with two sides, such as a word and what it points to, a word and its plural, or a word and a rule. Pieces that share the same result share one row. At most 5 rows and 3 columns.",
     "code-line": "Wording. One line of code, with the important tokens marked.",
     "label-plus-group": "Concept. One word stands for many things. A label, a ring of the same icon, optional other examples. English flock, math set, science species.",
     "compare-two": "Concept. Two things side by side. Noun vs verb, odd vs even, plant vs animal cell.",

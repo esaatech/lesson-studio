@@ -356,7 +356,7 @@ def read_lesson_media(
     path = _owned_output(str(Path(lesson.audio_dir) / name))
     if path is None:
         return JSONResponse(status_code=404, content={"error": "Audio not found."})
-    return FileResponse(path, media_type="audio/mpeg")
+    return FileResponse(path, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
 
 def _owned_output(raw: str) -> Path | None:
